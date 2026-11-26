@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@mcp-graph-explorer/normalizer": "workspace:*",
     "neo4j-driver": "^6.3.2"
   }
 }

@@ -26,6 +26,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@mcp-graph-explorer/normalizer':
+        specifier: workspace:*
+        version: link:../normalizer
       neo4j-driver:
         specifier: ^6.3.2
         version: 6.3.2

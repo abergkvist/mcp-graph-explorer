@@ -5,7 +5,7 @@ import Sigma from "sigma";
 import { extremityArrow, pathCurved, pathLine, pathLoop, sdfCircle, sdfDiamond, sdfSquare, sdfTriangle } from "sigma/rendering";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { circularPositions, expansionPositions, geographicPositions, type LayoutName, type Position } from "./layouts.ts";
-import { labelStyles, nodeName } from "./model.ts";
+import { labelStyles, nodeName, selectionFocus, type Selection } from "./model.ts";
 import { PALETTE, type Theme } from "./palette.ts";
 import { nodeSize, zoomSizeRatio } from "./sizing.ts";
 import type { CreateRenderer } from "./renderer.ts";
@@ -14,7 +14,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
   const graph = new MultiDirectedGraph();
   let theme: Theme = "light";
   let data: Pick<GraphResult, "nodes" | "edges"> = { nodes: [], edges: [] };
-  let selected: string | null = null;
+  let selected: Selection | null = null;
   let highlight: Set<string> | null = null;
   let hidden = new Set<string>();
   let layout: LayoutName = "force";
@@ -35,12 +35,13 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
       edges: {
         size: attribute("size"), color: attribute("color"), visibility: attribute("visibility"),
         label: attribute("label"), labelColor: attribute("labelColor"), labelSize: 10,
-        head: "arrow", parallelPath: "curved",
+        head: "arrow", parallelPath: "curved", cursor: "pointer",
       },
     },
     settings: {
       allowInvalidContainer: true,
       enableNodeDrag: true,
+      enableEdgeEvents: true,
       autoRescale: "once", // keeps the view still while a node is dragged; reset when the graph is rebuilt
       itemSizesReference: "screen", // sizes in pixels, not in layout units
       zoomToSizeRatioFunction: zoomSizeRatio,
@@ -61,6 +62,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
   observer.observe(el);
 
   sigma.on("clickNode", ({ node }) => events.onNodeClick(node));
+  sigma.on("clickEdge", ({ edge }) => events.onEdgeClick(edge));
   sigma.on("clickStage", () => events.onBackgroundClick());
   sigma.on("enterNode", ({ node }) => events.onNodeHover(node));
   sigma.on("leaveNode", () => events.onNodeHover(null));
@@ -70,32 +72,38 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
   function paint() {
     const colors = PALETTE[theme];
     const styles = labelStyles(data.nodes.flatMap((n) => n.labels.slice(0, 1)));
-    const near = new Set<string>(selected && graph.hasNode(selected) ? [selected, ...graph.neighbors(selected)] : []);
-    const focus = highlight ?? (near.size ? near : null);
+    const around = selectionFocus(selected, data.edges);
+    const focus = highlight ?? around?.nodes ?? null;
+    const selectedNode = selected?.kind === "node" ? selected.id : undefined;
+    const selectedEdge = selected?.kind === "edge" ? selected.id : undefined;
 
     for (const node of data.nodes) {
       const style = styles.get(node.labels[0] ?? "");
       const faded = focus !== null && !focus.has(node.id);
       const degree = graph.degree(node.id);
       graph.mergeNodeAttributes(node.id, {
-        size: nodeSize(degree, node.id === selected, data.nodes.length),
+        size: nodeSize(degree, node.id === selectedNode, data.nodes.length),
         color: faded ? colors.faded : style ? colors.nodes[style.color] : colors.placeholder,
         shape: style?.shape ?? "circle",
         label: faded || node.placeholder ? "" : nodeName(node),
         labelColor: colors.label,
-        labelVisibility: node.id === selected || (highlight && highlight.size <= 20 && highlight.has(node.id)) ? "visible" : "auto",
+        labelVisibility: node.id === selectedNode || (highlight && highlight.size <= 20 && highlight.has(node.id)) ? "visible" : "auto",
         visibility: node.labels.some((label) => hidden.has(label)) ? "hidden" : "visible",
         zIndex: faded ? 0 : 1,
       });
     }
     const showTypes = data.edges.length <= 30;
     for (const edge of data.edges) {
-      const faded = focus !== null && !(focus.has(edge.source) && focus.has(edge.target));
+      const chosen = edge.id === selectedEdge;
+      // A search decides on its own; otherwise the selection does.
+      const faded = highlight
+        ? !(highlight.has(edge.source) && highlight.has(edge.target))
+        : around !== null && !around.edges.has(edge.id);
       const gone = [edge.source, edge.target].some((id) => graph.getNodeAttribute(id, "visibility") === "hidden");
       graph.mergeEdgeAttributes(edge.id, {
-        size: 1.8,
-        color: faded ? colors.faded : colors.edge,
-        label: showTypes && !faded ? edge.type : "",
+        size: chosen ? 4 : 1.8,
+        color: chosen ? colors.label : faded ? colors.faded : colors.edge,
+        label: chosen || (showTypes && !faded) ? edge.type : "",
         labelColor: colors.label,
         visibility: gone ? "hidden" : "visible",
       });
@@ -151,7 +159,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
       arrange(new Map());
       void sigma.getCamera().reset();
     },
-    setSelected(id) { selected = id; paint(); },
+    setSelected(next) { selected = next; paint(); },
     setHighlight(ids) { highlight = ids; paint(); },
     setHiddenLabels(labels) { hidden = labels; paint(); },
     setTheme(next) { theme = next; paint(); },

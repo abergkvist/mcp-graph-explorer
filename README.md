@@ -3,7 +3,7 @@
 Ask questions about a graph database in Claude Desktop and see the answer as an interactive graph
 in the side panel, where it does not scroll away.
 
-Claude writes Cypher and this MCP server runs it against Neo4j or Memgraph over Bolt. Claude can
+Claude writes Cypher and this MCP server runs it against [Memgraph](https://memgraph.com/), [ArcadeDB](https://arcadedb.com/), [Neo4j](https://neo4j.com/) or othter [BOLT](https://neo4j.com/docs/bolt/current/bolt/) compatible graph. Claude can
 explore and check without showing anything, and then shows the final answer in an
 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view as a graph, a table or a single
 value.

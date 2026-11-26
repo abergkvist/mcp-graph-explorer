@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { labelStyles, parseResult, pickView } from "../src/model.ts";
+import { labelStyles, parseResult, pickView, searchNodes } from "../src/model.ts";
 
 const result = (partial: Partial<GraphResult>): GraphResult => ({
   nodes: [],
@@ -24,6 +24,15 @@ describe("view model", () => {
       expect(new Set(styles.map((s) => s.color)).size).toBe(labels.length);
       expect(new Set(styles.map((s) => s.shape)).size).toBe(labels.length);
     }
+  });
+  it("searches labels and property values", () => {
+    const nodes = [
+      { id: "1", labels: ["Station"], props: { name: "Falun C" } },
+      { id: "2", labels: ["TrackSection"], props: { lengthKm: 12 } },
+    ];
+    expect(searchNodes(nodes, "falun")).toEqual(new Set(["1"]));
+    expect(searchNodes(nodes, "track")).toEqual(new Set(["2"]));
+    expect(searchNodes(nodes, "  ")).toBeNull();
   });
   it("rejects unexpected payloads", () => {
     for (const bad of [undefined, null, "x", {}, { nodes: 1 }]) expect(parseResult(bad)).toBeUndefined();

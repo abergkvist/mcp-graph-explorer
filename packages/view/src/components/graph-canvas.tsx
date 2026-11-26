@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useRef } from "react";
-import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { labelStyles } from "../model.ts";
-import { PALETTE, type Theme } from "../palette.ts";
+import { useEffect, useRef, useState } from "react";
+import type { GraphNode, GraphResult } from "@mcp-graph-explorer/normalizer";
+import type { Theme } from "../palette.ts";
 import type { GraphRenderer } from "../renderer.ts";
 import { createSigmaRenderer } from "../sigma-renderer.ts";
-import { LabelMark } from "./label-mark.tsx";
+import { cellText } from "./data-table.tsx";
 
 interface Props {
   result: GraphResult;
   theme: Theme;
   selected: string | null;
   onSelect(id: string | null): void;
+  highlight: Set<string> | null;
+  hidden: Set<string>;
 }
 
-export function GraphCanvas({ result, theme, selected, onSelect }: Props) {
+interface Pointer { x: number; y: number; width: number; height: number }
+
+export function GraphCanvas({ result, theme, selected, onSelect, highlight, hidden }: Props) {
+  const pointer = useRef<Pointer>({ x: 0, y: 0, width: 0, height: 0 });
+  const [hovered, setHovered] = useState<{ id: string; at: Pointer }>();
   const element = useRef<HTMLDivElement>(null);
   const renderer = useRef<GraphRenderer>(null);
   // The renderer is created once; it calls whatever handler is current.
@@ -24,27 +29,49 @@ export function GraphCanvas({ result, theme, selected, onSelect }: Props) {
     renderer.current = createSigmaRenderer(element.current!, {
       onNodeClick: (id) => select.current(id),
       onBackgroundClick: () => select.current(null),
-      onNodeHover: () => {},
+      onNodeHover: (id) => setHovered(id ? { id, at: pointer.current } : undefined),
     });
     return () => renderer.current?.destroy();
   }, []);
   useEffect(() => renderer.current?.setTheme(theme), [theme]);
   useEffect(() => renderer.current?.setGraph(result), [result]);
   useEffect(() => renderer.current?.setSelected(selected), [selected]);
+  useEffect(() => renderer.current?.setHighlight(highlight), [highlight]);
+  useEffect(() => renderer.current?.setHiddenLabels(hidden), [hidden]);
 
-  const legend = useMemo(() => [...labelStyles(result.nodes.flatMap((n) => n.labels.slice(0, 1)))], [result]);
+  const node = result.nodes.find((n) => n.id === hovered?.id);
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div
+      className="relative min-h-0 flex-1 overflow-hidden"
+      onPointerMove={(e) => {
+        const box = e.currentTarget.getBoundingClientRect();
+        pointer.current = { x: e.clientX - box.left, y: e.clientY - box.top, width: box.width, height: box.height };
+      }}
+    >
       <div ref={element} className="absolute inset-0" />
-      <ul className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {legend.map(([label, style]) => (
-          <li key={label} className="flex items-center gap-1.5">
-            <LabelMark shape={style.shape} color={PALETTE[theme].nodes[style.color]!} />
-            {label}
-          </li>
-        ))}
-      </ul>
+      {node && hovered && <NodeTooltip node={node} at={hovered.at} />}
+    </div>
+  );
+}
+
+function NodeTooltip({ node, at }: { node: GraphNode; at: Pointer }) {
+  const properties = Object.entries(node.props).slice(0, 8);
+  // Open towards the middle of the canvas so that the box stays inside it.
+  const style = {
+    left: at.x < at.width / 2 ? at.x + 12 : undefined,
+    right: at.x < at.width / 2 ? undefined : at.width - at.x + 12,
+    top: at.y < at.height / 2 ? at.y + 12 : undefined,
+    bottom: at.y < at.height / 2 ? undefined : at.height - at.y + 12,
+  };
+  return (
+    <div role="tooltip" className="pointer-events-none absolute max-w-64 rounded-md border bg-background px-3 py-2 text-xs shadow-md" style={style}>
+      <p className="font-semibold">{node.labels.join(", ") || "Node"}</p>
+      {properties.map(([key, value]) => (
+        <p key={key} className="truncate">
+          <span className="text-muted-foreground">{key}</span> {cellText(value)}
+        </p>
+      ))}
     </div>
   );
 }

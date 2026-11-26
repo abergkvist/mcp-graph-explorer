@@ -38,3 +38,11 @@ export function labelStyles(labels: string[]): Map<string, LabelStyle> {
 
 export const nodeName = (node: GraphResult["nodes"][number]): string =>
   String(node.props.name ?? node.props.title ?? node.labels[0] ?? node.id);
+
+/** Ids of nodes whose labels or property values contain the query; null when there is no query. */
+export function searchNodes(nodes: GraphResult["nodes"], query: string): Set<string> | null {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return null;
+  const matches = (value: unknown) => String(typeof value === "object" ? JSON.stringify(value) : value).toLowerCase().includes(needle);
+  return new Set(nodes.filter((n) => [...n.labels, ...Object.values(n.props)].some(matches)).map((n) => n.id));
+}

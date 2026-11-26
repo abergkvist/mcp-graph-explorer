@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { mergeGraphs } from "@mcp-graph-explorer/normalizer/graph";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cellText, DataTable } from "./components/data-table.tsx";
 import { GraphCanvas } from "./components/graph-canvas.tsx";
 import { NodeDetails } from "./components/node-details.tsx";
+import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
-import { pickView } from "./model.ts";
+import { pickView, searchNodes } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -36,6 +37,15 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
   const view = pickView(result);
   const [tab, setTab] = useState("graph");
   const node = result.nodes.find((n) => n.id === selected);
+  const [query, setQuery] = useState("");
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const matches = useMemo(() => searchNodes(result.nodes, query), [result, query]);
+  const toggle = (label: string) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      if (!next.delete(label)) next.add(label);
+      return next;
+    });
 
   const select = (id: string | null) => {
     setSelected(id);
@@ -89,7 +99,16 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
         <>
           {/* Kept mounted so the layout and camera survive a visit to the table tab. */}
           <div className={tab === "graph" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-            <GraphCanvas result={result} theme={theme} selected={selected} onSelect={select} />
+            <Toolbar
+              result={result}
+              theme={theme}
+              query={query}
+              onQuery={setQuery}
+              matches={matches?.size}
+              hidden={hidden}
+              onToggle={toggle}
+            />
+            <GraphCanvas result={result} theme={theme} selected={selected} onSelect={select} highlight={matches} hidden={hidden} />
             {node && (
               <NodeDetails
                 node={node}

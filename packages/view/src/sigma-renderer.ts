@@ -67,7 +67,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
         shape: style?.shape ?? "circle",
         label: faded || node.placeholder ? "" : nodeName(node),
         labelColor: colors.label,
-        labelVisibility: node.id === selected ? "visible" : "auto",
+        labelVisibility: node.id === selected || (highlight && highlight.size <= 20 && highlight.has(node.id)) ? "visible" : "auto",
         visibility: node.labels.some((label) => hidden.has(label)) ? "hidden" : "visible",
         zIndex: faded ? 0 : 1,
       });

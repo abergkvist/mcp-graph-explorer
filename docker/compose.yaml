@@ -1,0 +1,36 @@
+name: mcp-graph-explorer
+
+services:
+  neo4j:
+    image: neo4j:2026.10.2-community
+    ports: ["127.0.0.1:7687:7687", "127.0.0.1:7474:7474"]
+    environment:
+      NEO4J_AUTH: neo4j/graphexplorer
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "graphexplorer", "RETURN 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  memgraph:
+    image: memgraph/memgraph:3.14.0
+    ports: ["127.0.0.1:7688:7687"]
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  neo4j-seed:
+    image: neo4j:2026.10.2-community
+    depends_on:
+      neo4j: { condition: service_healthy }
+    volumes: ["./seed.cypher:/seed.cypher:ro"]
+    entrypoint: ["cypher-shell", "-a", "bolt://neo4j:7687", "-u", "neo4j", "-p", "graphexplorer", "-f", "/seed.cypher"]
+
+  memgraph-seed:
+    image: memgraph/memgraph:3.14.0
+    depends_on:
+      memgraph: { condition: service_healthy }
+    volumes: ["./seed.cypher:/seed.cypher:ro"]
+    entrypoint: ["/bin/sh", "-c", "mgconsole --host memgraph < /seed.cypher"]

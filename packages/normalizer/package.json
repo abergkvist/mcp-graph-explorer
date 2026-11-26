@@ -1,0 +1,30 @@
+{
+  "name": "@mcp-graph-explorer/normalizer",
+  "version": "0.1.0",
+  "description": "Turns graph database driver results into a JSON-safe graph plus table",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "default": "./dist/graph.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "neo4j-driver": "^6.3.2"
+  },
+  "peerDependencies": {
+    "neo4j-driver": "^6.3.2"
+  }
+}

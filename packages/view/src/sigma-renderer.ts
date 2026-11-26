@@ -4,6 +4,7 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import Sigma from "sigma";
 import { extremityArrow, pathCurved, pathLine, pathLoop, sdfCircle, sdfDiamond, sdfSquare, sdfTriangle } from "sigma/rendering";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
+import { circularPositions, geographicPositions, type LayoutName, type Position } from "./layouts.ts";
 import { labelStyles, nodeName } from "./model.ts";
 import { PALETTE, type Theme } from "./palette.ts";
 import type { CreateRenderer } from "./renderer.ts";
@@ -15,6 +16,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
   let selected: string | null = null;
   let highlight: Set<string> | null = null;
   let hidden = new Set<string>();
+  let layout: LayoutName = "force";
 
   const attribute = (name: string) => ({ attribute: name });
   const sigma = new Sigma(graph, el, {
@@ -27,7 +29,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
         x: attribute("x"), y: attribute("y"), size: attribute("size"), color: attribute("color"),
         shape: attribute("shape"), label: attribute("label"), labelColor: attribute("labelColor"),
         visibility: attribute("visibility"), zIndex: attribute("zIndex"), labelVisibility: attribute("labelVisibility"),
-        labelSize: 12, cursor: "pointer",
+        labelSize: 12, cursor: "grab",
       },
       edges: {
         size: attribute("size"), color: attribute("color"), visibility: attribute("visibility"),
@@ -37,11 +39,13 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     },
     settings: {
       allowInvalidContainer: true,
+      enableNodeDrag: true,
+      autoRescale: "once", // keeps the view still while a node is dragged; reset when the graph is rebuilt
       itemSizesReference: "screen", // sizes in pixels, not in layout units
       renderEdgeLabels: true,
       labelRenderedSizeThreshold: 4,
       labelDensity: 0.7,
-      stagePadding: 40,
+      stagePadding: 60,
     },
   });
 
@@ -58,6 +62,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
   sigma.on("clickStage", () => events.onBackgroundClick());
   sigma.on("enterNode", ({ node }) => events.onNodeHover(node));
   sigma.on("leaveNode", () => events.onNodeHover(null));
+  sigma.on("nodeDragStart", () => events.onNodeHover(null));
 
   /** Recomputes everything visual from data, theme, selection, search and label filter. */
   function paint() {
@@ -96,36 +101,61 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     }
   }
 
+  const currentPositions = () =>
+    new Map<string, Position>(graph.mapNodes((id, a) => [id, { x: a.x as number, y: a.y as number }]));
+
+  /** Draws `data` in the chosen layout. `previous` holds positions to keep, e.g. across an expand. */
+  function arrange(previous: Map<string, Position>) {
+    const { nodes, edges } = data;
+    graph.clear();
+    // A circle is only a circle if every node is placed anew.
+    const kept = layout === "circular" ? new Map<string, Position>() : previous;
+    const target =
+      layout === "geographic" ? geographicPositions(nodes, edges)
+      : layout === "circular" ? circularPositions(nodes, edges)
+      : undefined;
+    const known = nodes.some((n) => kept.has(n.id));
+
+    nodes.forEach((node, i) => {
+      const old = kept.get(node.id);
+      let start = old ?? target?.get(node.id);
+      if (!start) {
+        const near = edges
+          .flatMap((e) => (e.source === node.id ? [e.target] : e.target === node.id ? [e.source] : []))
+          .map((id) => kept.get(id))
+          .find(Boolean);
+        const angle = (2 * Math.PI * i) / nodes.length;
+        start = near
+          ? { x: near.x + Math.cos(angle) * 10, y: near.y + Math.sin(angle) * 10 }
+          : { x: Math.cos(angle) * 100, y: Math.sin(angle) * 100 };
+      }
+      graph.addNode(node.id, { ...start, fixed: Boolean(old) });
+    });
+    for (const edge of edges) graph.addDirectedEdgeWithKey(edge.id, edge.source, edge.target, {});
+
+    if (layout === "force" && graph.order > 1) {
+      // Low gravity and many slow iterations untangle sparse networks. Above 300 nodes the
+      // Barnes-Hut approximation keeps it fast.
+      const large = graph.order > 300;
+      forceAtlas2.assign(graph, {
+        iterations: known ? 200 : large ? 1200 : 3000,
+        settings: { adjustSizes: false, gravity: 0.05, scalingRatio: 10, slowDown: 2, barnesHutOptimize: large },
+      });
+    }
+    paint();
+  }
+
   return {
     setGraph(next) {
-      const positions = new Map(graph.mapNodes((id, a) => [id, { x: a.x as number, y: a.y as number }]));
+      const previous = currentPositions();
       data = next;
-      graph.clear();
-      const known = next.nodes.some((n) => positions.has(n.id));
-      next.nodes.forEach((node, i) => {
-        const kept = positions.get(node.id);
-        const neighbour = next.edges
-          .flatMap((e) => (e.source === node.id ? [e.target] : e.target === node.id ? [e.source] : []))
-          .map((id) => positions.get(id))
-          .find(Boolean);
-        const angle = (2 * Math.PI * i) / next.nodes.length;
-        const start = kept ??
-          (neighbour
-            ? { x: neighbour.x + Math.cos(angle) * 10, y: neighbour.y + Math.sin(angle) * 10 }
-            : { x: Math.cos(angle) * 100, y: Math.sin(angle) * 100 });
-        graph.addNode(node.id, { ...start, fixed: Boolean(kept) });
-      });
-      for (const edge of next.edges) graph.addDirectedEdgeWithKey(edge.id, edge.source, edge.target, {});
-      if (graph.order > 1) {
-        // Low gravity and many slow iterations untangle sparse networks. Above 300 nodes the
-        // Barnes-Hut approximation keeps it fast.
-        const large = graph.order > 300;
-        forceAtlas2.assign(graph, {
-          iterations: known ? 200 : large ? 1200 : 3000,
-          settings: { adjustSizes: false, gravity: 0.05, scalingRatio: 10, slowDown: 2, barnesHutOptimize: large },
-        });
-      }
-      paint();
+      arrange(previous);
+    },
+    setLayout(next) {
+      if (next === layout) return;
+      layout = next;
+      arrange(new Map());
+      void sigma.getCamera().reset();
     },
     setSelected(id) { selected = id; paint(); },
     setHighlight(ids) { highlight = ids; paint(); },

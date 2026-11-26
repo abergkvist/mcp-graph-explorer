@@ -1,4 +1,4 @@
-import { Component, useMemo, useState, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { mergeGraphs } from "@mcp-graph-explorer/normalizer/graph";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { GraphCanvas } from "./components/graph-canvas.tsx";
 import { NodeDetails } from "./components/node-details.tsx";
 import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
+import type { LayoutName } from "./layouts.ts";
 import { pickView, searchNodes, writeNote } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
@@ -38,6 +39,7 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
   const [tab, setTab] = useState("graph");
   const node = result.nodes.find((n) => n.id === selected);
   const [query, setQuery] = useState("");
+  const [layout, setLayout] = useState<LayoutName>("force");
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const matches = useMemo(() => searchNodes(result.nodes, query), [result, query]);
   const toggle = (label: string) =>
@@ -108,8 +110,10 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
               matches={matches?.size}
               hidden={hidden}
               onToggle={toggle}
+              layout={layout}
+              onLayout={setLayout}
             />
-            <GraphCanvas result={result} theme={theme} selected={selected} onSelect={select} highlight={matches} hidden={hidden} />
+            <GraphCanvas result={result} theme={theme} selected={selected} onSelect={select} highlight={matches} hidden={hidden} layout={layout} />
             {node && (
               <NodeDetails
                 node={node}
@@ -139,22 +143,22 @@ class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
 
 export function App() {
   const { state, frame, openInPanel, selectNode, expandNode } = useHost();
+  // On the root element, so that the body, scrollbars and menus follow the theme too.
+  useEffect(() => void document.documentElement.classList.toggle("dark", frame.theme === "dark"), [frame.theme]);
   return (
-    <div className={frame.theme === "dark" ? "dark" : undefined}>
-      <main className="flex flex-col overflow-hidden bg-background text-foreground" style={{ height: frame.height, padding: frame.padding }}>
-        {state.kind === "loading" && <Message text="Running query…" />}
-        {state.kind === "message" && <Message text={state.text} error={state.error} />}
-        {state.kind === "result" && (
-          <Fallback>
-            <Result
-              result={state.result}
-              theme={frame.theme}
-              expand={frame.canExpand ? openInPanel : undefined}
-              host={{ selectNode, expandNode }}
-            />
-          </Fallback>
-        )}
-      </main>
-    </div>
+    <main className="flex flex-col overflow-hidden bg-background text-foreground" style={{ height: frame.height, padding: frame.padding }}>
+      {state.kind === "loading" && <Message text="Running query…" />}
+      {state.kind === "message" && <Message text={state.text} error={state.error} />}
+      {state.kind === "result" && (
+        <Fallback>
+          <Result
+            result={state.result}
+            theme={frame.theme}
+            expand={frame.canExpand ? openInPanel : undefined}
+            host={{ selectNode, expandNode }}
+          />
+        </Fallback>
+      )}
+    </main>
   );
 }

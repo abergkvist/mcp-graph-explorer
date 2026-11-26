@@ -6,7 +6,7 @@ import { LIMITS } from "./config.ts";
 import type { DialectAdapter } from "./dialect.ts";
 import { applyLimits } from "./limits.ts";
 import { describeSelection, neighborhood } from "./neighbors.ts";
-import { runCypher } from "./query.ts";
+import { queryData, runCypher } from "./query.ts";
 import type { QueryRunner } from "./runner.ts";
 import { readSchema } from "./schema.ts";
 import type { SelectionStore } from "./selection.ts";
@@ -48,6 +48,21 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
       "based on a sample. Call this before writing Cypher for an unfamiliar database.",
     annotations: { readOnlyHint: true },
   }, () => reportingErrors(async () => ({ content: text(JSON.stringify(await readSchema(runner, adapter))) })));
+
+  // No view: exploring must not draw anything.
+  server.registerTool("query_cypher", {
+    title: "Query graph",
+    description:
+      (writing
+        ? "Run a Cypher query (WRITE MODE: it can change and delete data) and get the data back. "
+        : "Run a read-only Cypher query and get the data back. ") +
+      "Nothing is shown to the user. Use it for all exploring and checking. When you have the answer, show it with show_result.",
+    inputSchema: z.object({
+      query: z.string().describe("Cypher to run"),
+      params: z.record(z.string(), z.unknown()).optional().describe("Query parameters"),
+    }),
+    annotations: writing ? { readOnlyHint: false, destructiveHint: true } : { readOnlyHint: true },
+  }, (input) => reportingErrors(async () => ({ content: text(await queryData(runner, adapter, input)) })));
 
   registerAppTool(server, "run_cypher", {
     title: "Run Cypher",

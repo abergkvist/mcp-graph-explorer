@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.ts";
 import { adapterFor } from "../src/dialect.ts";
 import { applyLimits } from "../src/limits.ts";
-import { runCypher } from "../src/query.ts";
+import { queryData, runCypher } from "../src/query.ts";
 import { createSelectionStore } from "../src/selection.ts";
 import { summarize } from "../src/summary.ts";
 import type { GraphResult, Json } from "@mcp-graph-explorer/normalizer";
@@ -127,6 +127,31 @@ describe("runCypher", () => {
     expect(summarize(result)).toMatch(/^Write mode: transaction committed\. nodesCreated: 1/);
     const read = await runCypher(fakeRunner([[1, 2]]).runner, adapter, { answer_query: "A" });
     expect(summarize(read)).not.toContain("committed");
+  });
+});
+
+describe("queryData", () => {
+  const adapter = adapterFor("neo4j");
+
+  it("returns the data within the limits and notes the cut", async () => {
+    const many = Array.from({ length: 300 }, (_, i) => [node(i + 1)]);
+    const out = await queryData(fakeRunner(many).runner, adapter, { query: "Q" });
+    const data = JSON.parse(out);
+    expect(out.length).toBeLessThanOrEqual(20_000);
+    expect(data.nodes.length).toBeGreaterThan(0);
+    expect(data.nodes.length).toBeLessThanOrEqual(100);
+    expect(data.truncated).toContain("nodes");
+    expect(data).not.toHaveProperty("changes");
+  });
+  it("reports a committed write without rows", async () => {
+    const fake = fakeRunner([], "write");
+    const data = JSON.parse(await queryData(fake.runner, adapter, { query: "Q" }));
+    expect(fake.calls.map((c) => c.write)).toEqual([true]);
+    expect(data.changes).toEqual({ nodesCreated: 1 });
+  });
+  it("says that a write was committed even if processing the result fails", async () => {
+    const broken = fakeRunner(null as unknown as unknown[][], "write");
+    await expect(queryData(broken.runner, adapter, { query: "Q" })).rejects.toThrow(/committed.*Do not run the query again/);
   });
 });
 

@@ -60,6 +60,16 @@ describe.each(targets)("$dialect", (config) => {
     expect(rows.data.nodes).toHaveLength(0);
   });
 
+  it("queries without a view", async () => {
+    const res = await read.call("query_cypher", { query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun central" } });
+    expect(JSON.parse(res.text).nodes[0].props.name).toBe("Falun central");
+    expect(res.data).toBeUndefined();
+    expect((await read.call("query_cypher", { query: "NOT CYPHER" })).isError).toBe(true);
+    const tool = (await read.client.listTools()).tools.find((t) => t.name === "query_cypher")!;
+    expect(tool._meta?.ui).toBeUndefined();
+    expect(tool.annotations?.readOnlyHint).toBe(true);
+  });
+
   it("auto-connects result nodes", async () => {
     const { data } = await read.call("run_cypher", {
       answer_query: "MATCH (s:Station {name: 'Falun central'})-[:CONNECTS]-(t:TrackSection) RETURN s, t",

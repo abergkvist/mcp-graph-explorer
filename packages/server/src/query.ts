@@ -17,6 +17,23 @@ const toGraph = (run: RunResult, adapter: DialectAdapter): GraphResult => {
   return result;
 };
 
+/** Runs one query and returns its data as JSON for the model. Writes if the server is in write mode. */
+export async function queryData(
+  runner: QueryRunner,
+  adapter: DialectAdapter,
+  { query, params = {} }: { query: string; params?: Record<string, unknown> },
+): Promise<string> {
+  const run = await runner.run(query, params, LIMITS.maxRows, runner.accessMode === "write");
+  try {
+    const { nodes, edges, table, meta } = applyLimits(toGraph(run, adapter), LIMITS.query);
+    return JSON.stringify({ nodes, relationships: edges, table, truncated: meta.truncated, changes: run.changes });
+  } catch (error) {
+    if (!run.changes) throw error;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`The write was committed. Do not run the query again. Processing the result failed: ${reason}`);
+  }
+}
+
 /** Adds the relationships that exist between the nodes already in the result. */
 async function autoConnect(runner: QueryRunner, adapter: DialectAdapter, result: GraphResult): Promise<GraphResult> {
   const ids = result.nodes.filter((n) => !n.placeholder).map((n) => adapter.toIdParam(n.id)).filter((id) => id !== undefined);

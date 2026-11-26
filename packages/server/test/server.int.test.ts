@@ -101,6 +101,25 @@ describe.each(targets)("$dialect", (config) => {
     expect(tools.map((t) => t.name)).not.toContain("run_cypher");
   });
 
+  it("sends the query with the result", async () => {
+    const input = { answer_query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun central" } };
+    const { data, text } = await read.call("show_result", input);
+    expect(data.query).toEqual(input);
+    expect(text).not.toContain("$name");
+  });
+
+  it("lets only the view run an edited query, never writing", async () => {
+    const run = await write.call("run_view_query", { answer_query: "MATCH (s:Station) RETURN s LIMIT 2" });
+    expect(run.data.nodes).toHaveLength(2);
+    expect(run.data.query).toEqual({ answer_query: "MATCH (s:Station) RETURN s LIMIT 2" });
+    const count = async () => (await read.call("query_cypher", { query: COUNT })).text;
+    const before = await count();
+    expect((await write.call("run_view_query", { answer_query: CREATE })).isError).toBe(true);
+    expect(await count()).toBe(before);
+    const tool = (await read.client.listTools()).tools.find((t) => t.name === "run_view_query")!;
+    expect((tool._meta?.ui as { visibility?: string[] }).visibility).toEqual(["app"]);
+  });
+
   it("reports an unreachable database and keeps serving", async () => {
     const down = await connect({ ...config, uri: "bolt://localhost:1" });
     for (let i = 0; i < 2; i++) {

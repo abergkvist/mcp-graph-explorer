@@ -1,15 +1,10 @@
-import { mergeGraphs, normalize, type GraphResult } from "@mcp-graph-explorer/normalizer";
+import { mergeGraphs, normalize, type GraphResult, type ViewQuery } from "@mcp-graph-explorer/normalizer";
 import { LIMITS } from "./config.ts";
 import type { DialectAdapter } from "./dialect.ts";
 import { applyLimits } from "./limits.ts";
 import type { QueryRunner, RunResult } from "./runner.ts";
 
-export interface CypherInput {
-  answer_query: string;
-  context_query?: string;
-  params?: Record<string, unknown>;
-  connect?: "auto" | boolean;
-}
+export type CypherInput = ViewQuery;
 
 const toGraph = (run: RunResult, adapter: DialectAdapter): GraphResult => {
   const result = normalize(run, adapter.name);

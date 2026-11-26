@@ -26,6 +26,14 @@ const CONTRACT =
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 
+const cypherInput = z.object({
+  answer_query: z.string().describe("Cypher that answers the question"),
+  context_query: z.string().optional().describe("Read-only Cypher returning a subgraph to show next to the answer"),
+  params: z.record(z.string(), z.unknown()).optional().describe("Query parameters used by both queries"),
+  connect: z.union([z.literal("auto"), z.boolean()]).optional()
+    .describe("Fetch relationships between the returned nodes. Default 'auto': only if the result has none."),
+});
+
 /** Database errors go back to the model as tool errors so it can fix the query. */
 async function reportingErrors<T>(work: () => Promise<T>) {
   try {
@@ -74,18 +82,12 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
       "Show the final answer to the user in the graph view. Call it exactly once for each question that is answered " +
       "from the database, also when the answer is a single value or a table. Every call opens a new view, so do not " +
       "use it to explore or to test a query: do that with query_cypher first. " + CONTRACT,
-    inputSchema: z.object({
-      answer_query: z.string().describe("Cypher that answers the question"),
-      context_query: z.string().optional().describe("Read-only Cypher returning a subgraph to show next to the answer"),
-      params: z.record(z.string(), z.unknown()).optional().describe("Query parameters used by both queries"),
-      connect: z.union([z.literal("auto"), z.boolean()]).optional()
-        .describe("Fetch relationships between the returned nodes. Default 'auto': only if the result has none."),
-    }),
+    inputSchema: cypherInput,
     annotations: { readOnlyHint: true },
     _meta: { ui: { resourceUri: viewUri } },
   }, (input) => reportingErrors(async () => {
     const result = await runCypher(runner, adapter, input);
-    return { content: text(summarize(result)), structuredContent: { ...result } };
+    return { content: text(summarize(result)), structuredContent: { ...result, query: input } };
   }));
 
   // For the view only: hidden from the model.
@@ -109,6 +111,16 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
     const found = await neighborhood(runner, adapter, nodeId, LIMITS.maxExpandEdges);
     if (!found) return { isError: true, content: text("This node no longer exists in the database.") };
     return { content: text("ok"), structuredContent: { ...applyLimits(found) } };
+  }));
+
+  registerAppTool(server, "run_view_query", {
+    description: "Run a query the user edited in the graph view",
+    inputSchema: cypherInput,
+    annotations: { readOnlyHint: true },
+    _meta: appOnly,
+  }, (input) => reportingErrors(async () => {
+    const result = await runCypher(runner, adapter, input);
+    return { content: text("ok"), structuredContent: { ...result, query: input } };
   }));
 
   server.registerTool("get_selection", {

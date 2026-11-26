@@ -7,4 +7,11 @@ export type Truncation = "rows" | "nodes" | "edges" | "properties";
 export interface Meta { danglingEdges: number; truncated: Truncation[]; autoConnectedEdges: number; dialect: Dialect;
   /** Present only after a committed write: what changed. */
   changes?: Record<string, number> }
-export interface GraphResult { nodes: GraphNode[]; edges: GraphEdge[]; table: Table; meta: Meta }
+/** The Cypher behind a shown result, as the view gets it and sends it back. */
+export interface ViewQuery {
+  answer_query: string;
+  context_query?: string;
+  params?: Record<string, unknown>;
+  connect?: "auto" | boolean;
+}
+export interface GraphResult { nodes: GraphNode[]; edges: GraphEdge[]; table: Table; meta: Meta; query?: ViewQuery }

@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { mergeGraphs } from "@mcp-graph-explorer/normalizer/graph";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cellText, DataTable } from "./components/data-table.tsx";
 import { GraphCanvas } from "./components/graph-canvas.tsx";
-import { useHost } from "./host.ts";
+import { NodeDetails } from "./components/node-details.tsx";
+import { useHost, type Host } from "./host.ts";
 import { pickView } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
@@ -18,9 +20,38 @@ function Message({ text, error }: { text: string; error?: boolean }) {
   );
 }
 
-function Result({ result, theme, expand }: { result: GraphResult; theme: Theme; expand?: () => void }) {
+interface ResultProps {
+  result: GraphResult;
+  theme: Theme;
+  expand?: () => void;
+  host: Pick<Host, "selectNode" | "expandNode">;
+}
+
+function Result({ result: initial, theme, expand, host }: ResultProps) {
+  // Expanding adds to this copy; it is gone if the view is reloaded.
+  const [result, setResult] = useState(initial);
+  // Dev only: ?select=<node id> starts with a node selected, for visual checks.
+  const [selected, setSelected] = useState<string | null>(import.meta.env.DEV ? new URLSearchParams(location.search).get("select") : null);
+  const [expansion, setExpansion] = useState<{ busy?: boolean; error?: string }>({});
   const view = pickView(result);
   const [tab, setTab] = useState("graph");
+  const node = result.nodes.find((n) => n.id === selected);
+
+  const select = (id: string | null) => {
+    setSelected(id);
+    setExpansion({});
+    host.selectNode(id);
+  };
+  const expandSelected = async (id: string) => {
+    setExpansion({ busy: true });
+    try {
+      const extra = await host.expandNode(id);
+      setResult((current) => mergeGraphs(current, extra));
+      setExpansion({});
+    } catch (error) {
+      setExpansion({ error: error instanceof Error ? error.message : String(error) });
+    }
+  };
   const showTabs = view === "graph" && result.table.columns.length > 0;
   const summary =
     view === "graph"
@@ -58,7 +89,15 @@ function Result({ result, theme, expand }: { result: GraphResult; theme: Theme; 
         <>
           {/* Kept mounted so the layout and camera survive a visit to the table tab. */}
           <div className={tab === "graph" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-            <GraphCanvas result={result} theme={theme} />
+            <GraphCanvas result={result} theme={theme} selected={selected} onSelect={select} />
+            {node && (
+              <NodeDetails
+                node={node}
+                {...expansion}
+                onExpand={() => void expandSelected(node.id)}
+                onClose={() => select(null)}
+              />
+            )}
           </div>
           {tab === "table" && <DataTable table={result.table} />}
         </>
@@ -68,13 +107,20 @@ function Result({ result, theme, expand }: { result: GraphResult; theme: Theme; 
 }
 
 export function App() {
-  const { state, frame, openInPanel } = useHost();
+  const { state, frame, openInPanel, selectNode, expandNode } = useHost();
   return (
     <div className={frame.theme === "dark" ? "dark" : undefined}>
       <main className="flex flex-col overflow-hidden bg-background text-foreground" style={{ height: frame.height, padding: frame.padding }}>
         {state.kind === "loading" && <Message text="Running query…" />}
         {state.kind === "message" && <Message text={state.text} error={state.error} />}
-        {state.kind === "result" && <Result result={state.result} theme={frame.theme} expand={frame.canExpand ? openInPanel : undefined} />}
+        {state.kind === "result" && (
+          <Result
+            result={state.result}
+            theme={frame.theme}
+            expand={frame.canExpand ? openInPanel : undefined}
+            host={{ selectNode, expandNode }}
+          />
+        )}
       </main>
     </div>
   );

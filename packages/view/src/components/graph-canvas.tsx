@@ -6,20 +6,31 @@ import type { GraphRenderer } from "../renderer.ts";
 import { createSigmaRenderer } from "../sigma-renderer.ts";
 import { LabelMark } from "./label-mark.tsx";
 
-export function GraphCanvas({ result, theme }: { result: GraphResult; theme: Theme }) {
+interface Props {
+  result: GraphResult;
+  theme: Theme;
+  selected: string | null;
+  onSelect(id: string | null): void;
+}
+
+export function GraphCanvas({ result, theme, selected, onSelect }: Props) {
   const element = useRef<HTMLDivElement>(null);
   const renderer = useRef<GraphRenderer>(null);
+  // The renderer is created once; it calls whatever handler is current.
+  const select = useRef(onSelect);
+  select.current = onSelect;
 
   useEffect(() => {
     renderer.current = createSigmaRenderer(element.current!, {
-      onNodeClick: () => {},
-      onBackgroundClick: () => {},
+      onNodeClick: (id) => select.current(id),
+      onBackgroundClick: () => select.current(null),
       onNodeHover: () => {},
     });
     return () => renderer.current?.destroy();
   }, []);
   useEffect(() => renderer.current?.setTheme(theme), [theme]);
   useEffect(() => renderer.current?.setGraph(result), [result]);
+  useEffect(() => renderer.current?.setSelected(selected), [selected]);
 
   const legend = useMemo(() => [...labelStyles(result.nodes.flatMap((n) => n.labels.slice(0, 1)))], [result]);
 

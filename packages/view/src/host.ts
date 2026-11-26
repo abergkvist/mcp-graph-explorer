@@ -1,5 +1,5 @@
 // Everything that talks to the MCP host.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { App } from "@modelcontextprotocol/ext-apps";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { parseResult } from "./model.ts";
@@ -21,6 +21,9 @@ export interface Host {
   state: ViewState;
   frame: Frame;
   openInPanel(): void;
+  /** Tells the server which node is selected, so that the model can ask for it. */
+  selectNode(id: string | null): void;
+  expandNode(id: string): Promise<GraphResult>;
 }
 
 const INLINE_HEIGHT = "480px";
@@ -79,6 +82,20 @@ export function useHost(): Host {
     );
   }, []);
 
-  const openInPanel = useCallback(() => void app?.requestDisplayMode({ mode: "fullscreen" }), [app]);
-  return { state, frame, openInPanel };
+  const actions = useMemo(
+    () => ({
+      openInPanel: () => void app?.requestDisplayMode({ mode: "fullscreen" }),
+      selectNode: (id: string | null) =>
+        void app?.callServerTool({ name: "select_node", arguments: { nodeId: id } }).catch(console.error),
+      async expandNode(id: string) {
+        if (!app) throw new Error("Not connected to a host");
+        const response = await app.callServerTool({ name: "expand_node", arguments: { nodeId: id } });
+        const next = stateOf(response);
+        if (next.kind === "result") return next.result;
+        throw new Error(next.kind === "message" ? next.text : "Could not expand the node");
+      },
+    }),
+    [app],
+  );
+  return { state, frame, ...actions };
 }

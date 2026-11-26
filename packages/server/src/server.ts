@@ -11,12 +11,14 @@ import type { QueryRunner } from "./runner.ts";
 import { readSchema } from "./schema.ts";
 import type { SelectionStore } from "./selection.ts";
 import { summarize } from "./summary.ts";
+import type { ViewQueryStore } from "./view-query.ts";
 
 export interface ServerDeps {
   runner: QueryRunner;
   adapter: DialectAdapter;
   viewHtml: () => string;
   selection: SelectionStore;
+  viewQuery: ViewQueryStore;
 }
 
 const CONTRACT =
@@ -43,7 +45,7 @@ async function reportingErrors<T>(work: () => Promise<T>) {
   }
 }
 
-export function createServer({ runner, adapter, viewHtml, selection }: ServerDeps): McpServer {
+export function createServer({ runner, adapter, viewHtml, selection, viewQuery }: ServerDeps): McpServer {
   const server = new McpServer({ name: "graph-explorer", version: "0.1.0" }, {
     instructions:
       "To answer from the database, explore and check with query_cypher, which shows nothing, " +
@@ -86,6 +88,7 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
     annotations: { readOnlyHint: true },
     _meta: { ui: { resourceUri: viewUri } },
   }, (input) => reportingErrors(async () => {
+    viewQuery.write(null); // a new answer replaces whatever the user ran before
     const result = await runCypher(runner, adapter, input);
     return { content: text(summarize(result)), structuredContent: { ...result, query: input } };
   }));
@@ -120,7 +123,39 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
     _meta: appOnly,
   }, (input) => reportingErrors(async () => {
     const result = await runCypher(runner, adapter, input);
+    viewQuery.write(input);
     return { content: text("ok"), structuredContent: { ...result, query: input } };
+  }));
+
+  registerAppTool(server, "reset_view_query", {
+    description: "Forget the query the user ran in the graph view",
+    inputSchema: z.object({}),
+    _meta: appOnly,
+  }, () => reportingErrors(async () => {
+    viewQuery.write(null);
+    return { content: text("ok") };
+  }));
+
+  server.registerTool("get_view_query", {
+    title: "Read the user's query",
+    description:
+      "Returns the Cypher the user last ran themselves in the graph view's editor, with a summary of its result. " +
+      "Call this whenever the user refers to their own query or to what the panel shows now, since they may have changed it.",
+    annotations: { readOnlyHint: true },
+  }, () => reportingErrors(async () => {
+    const saved = viewQuery.read();
+    if (!saved) return { content: text("The user has not changed the query in the graph view.") };
+    const about = {
+      ...saved.query,
+      ranAt: saved.ranAt,
+      ageSeconds: Math.round((Date.now() - Date.parse(saved.ranAt)) / 1000),
+    };
+    // The query is worth knowing even if it no longer runs.
+    const outcome = await runCypher(runner, adapter, saved.query).then(
+      (result) => ({ summary: summarize(result) }),
+      (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }),
+    );
+    return { content: text(JSON.stringify({ ...about, ...outcome })) };
   }));
 
   server.registerTool("get_selection", {

@@ -8,6 +8,7 @@ import { adapterFor } from "../src/dialect.ts";
 import { createRunner, type QueryRunner } from "../src/runner.ts";
 import { createSelectionStore } from "../src/selection.ts";
 import { createServer } from "../src/server.ts";
+import { createViewQueryStore } from "../src/view-query.ts";
 
 const targets: Config[] = [
   { dialect: "neo4j", uri: "bolt://localhost:7687", user: "neo4j", password: "graphexplorer", accessMode: "read" },
@@ -19,7 +20,7 @@ const stateEnv = { GRAPH_STATE_DIR: mkdtempSync(join(tmpdir(), "gx-")) };
 async function connect(config: Config) {
   const runner = createRunner(config);
   runners.push(runner);
-  const server = createServer({ runner, adapter: adapterFor(config.dialect), viewHtml: () => "<html>view</html>", selection: createSelectionStore(config, stateEnv) });
+  const server = createServer({ runner, adapter: adapterFor(config.dialect), viewHtml: () => "<html>view</html>", selection: createSelectionStore(config, stateEnv), viewQuery: createViewQueryStore(config, stateEnv) });
   const client = new Client({ name: "test", version: "0" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
@@ -118,6 +119,36 @@ describe.each(targets)("$dialect", (config) => {
     expect(await count()).toBe(before);
     const tool = (await read.client.listTools()).tools.find((t) => t.name === "run_view_query")!;
     expect((tool._meta?.ui as { visibility?: string[] }).visibility).toEqual(["app"]);
+  });
+
+  it("tells Claude what the user ran, until reset or a new result", async () => {
+    const view = await connect(config);
+    const none = "The user has not changed the query in the graph view.";
+    const mine = { answer_query: "MATCH (s:Station {name: 'Falun central'}) RETURN s" };
+
+    await view.call("reset_view_query");
+    expect((await read.call("get_view_query")).text).toBe(none);
+
+    await view.call("run_view_query", mine);
+    await view.call("run_view_query", { answer_query: "NOT CYPHER" }); // a failed run saves nothing
+    const saved = JSON.parse((await read.call("get_view_query")).text);
+    expect(saved).toMatchObject(mine);
+    expect(saved.summary).toContain("Falun central");
+    expect(saved.ageSeconds).toBeGreaterThanOrEqual(0);
+
+    await view.call("reset_view_query");
+    expect((await read.call("get_view_query")).text).toBe(none);
+    await view.call("run_view_query", mine);
+    await read.call("show_result", { answer_query: "RETURN 1" });
+    expect((await read.call("get_view_query")).text).toBe(none);
+  });
+
+  it("returns the saved query also when it no longer runs", async () => {
+    createViewQueryStore(config, stateEnv).write({ answer_query: "NOT CYPHER" });
+    const saved = JSON.parse((await read.call("get_view_query")).text);
+    expect(saved.answer_query).toBe("NOT CYPHER");
+    expect(saved.error).toBeTruthy();
+    expect(saved).not.toHaveProperty("summary");
   });
 
   it("reports an unreachable database and keeps serving", async () => {

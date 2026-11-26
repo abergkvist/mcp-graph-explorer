@@ -9,6 +9,7 @@ import { applyLimits } from "../src/limits.ts";
 import { queryData, runCypher } from "../src/query.ts";
 import { createSelectionStore } from "../src/selection.ts";
 import { summarize } from "../src/summary.ts";
+import { createViewQueryStore } from "../src/view-query.ts";
 import type { GraphResult, Json } from "@mcp-graph-explorer/normalizer";
 import type { QueryRunner, RunResult } from "../src/runner.ts";
 import { toDriverParams } from "../src/runner.ts";
@@ -147,5 +148,18 @@ describe("selection store", () => {
     expect(b.read()).toBeUndefined();
     a.write(null);
     expect(a.read()).toBeUndefined();
+  });
+});
+
+describe("view query store", () => {
+  it("round-trips the query apart from the selection and clears it", () => {
+    const env = { GRAPH_STATE_DIR: mkdtempSync(join(tmpdir(), "gx-")) };
+    const queries = createViewQueryStore({ uri: "bolt://a" }, env);
+    const selection = createSelectionStore({ uri: "bolt://a" }, env);
+    queries.write({ answer_query: "RETURN 1" });
+    expect(queries.read()?.query).toEqual({ answer_query: "RETURN 1" });
+    expect(selection.read()).toBeUndefined();
+    queries.write(null);
+    expect(queries.read()).toBeUndefined();
   });
 });

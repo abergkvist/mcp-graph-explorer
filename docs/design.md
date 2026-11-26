@@ -27,6 +27,12 @@ scrollar bort.
 - Streamable HTTP, andra databaser (ArcadeDB, Apache AGE), publicering på npm **[val]**.
 - Markering av flera noder; kartlayout efter koordinater **[val]**.
 
+## Andra hosts
+
+v1 byggs och testas för Claude Desktop. Vyn och servern håller sig till MCP Apps-specen där
+det går; `preferredDisplayMode` är ett Claude-tillägg som inget får vara beroende av.
+ChatGPT är otestat och README lovar inget om det **[val]**.
+
 ## Misslyckande, även om allt "fungerar"
 
 - Hela grafen skickas till modellen i text.
@@ -60,7 +66,8 @@ scrollar bort.
 
 TypeScript, Node 22, pnpm-monorepo, Vitest. MCP: `@modelcontextprotocol/server` 2.x och
 `@modelcontextprotocol/ext-apps` 2.x. Databas: `neo4j-driver`. Vy: Vite +
-`vite-plugin-singlefile`, en självständig HTML-fil, utan UI-ramverk **[val]**.
+`vite-plugin-singlefile`, en självständig HTML-fil. UI: React, Tailwind och shadcn/ui; bara de
+komponenter som används tas in.
 
 ```
 packages/normalizer   resultat → noder, kanter, tabell (inga MCP-beroenden)
@@ -183,8 +190,10 @@ Klick på bakgrunden rensar. Finns noden inte längre säger verktyget det.
 - Expanderade noder finns bara i den öppna vyn och försvinner om den laddas om.
 - Deklarerar `inline` och `fullscreen`; resursen sätter `preferredDisplayMode: "fullscreen"`.
   "Öppna i panel" anropar `requestDisplayMode` i klickhanteraren.
-- Följer hostens storlek, tema, style-variabler och safe areas, och lyssnar på
-  `host-context-changed`.
+- Eget neutralt, modernt och minimalistiskt utseende, som inte efterliknar någon viss host.
+  shadcn:s neutrala bas; grafens färger, kanter, etiketter och markering utformas för sig.
+- Följer hostens storlek, ljust/mörkt tema och safe areas, och lyssnar på
+  `host-context-changed`. Hostens style-variabler för färg och typsnitt används inte **[val]**.
 - Resursens URI innehåller en hash av vyn, så att cachen inte ger gammal HTML **[val]**.
 - **Tidigt test i Claude Desktop:** järnvägsnätet är läsbart i en smal panel, och tio gamla
   vyer i samma chatt visas fortfarande (gräns för antalet WebGL-ytor). Misslyckas testet görs

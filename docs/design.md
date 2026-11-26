@@ -213,9 +213,10 @@ Klick på bakgrunden rensar. Finns noden inte längre säger verktyget det.
 
 ## Testdata
 
-30–50 stationer i Mellansverige med ungefärliga koordinater, bandelar som noder och
-`CONNECTS`-relationer: `(:Station)-[:CONNECTS]->(:TrackSection)-[:CONNECTS]->(:Station)`
-**[val]**. Handskriven, märkt som exempeldata. Samma data i båda databaserna.
+Urval ur RINF (EU:s järnvägsregister) för Dalarna och Gävle: 82 driftplatser (`Station` och
+`Junction`) och 84 bandelar: `(a)-[:CONNECTS]->(:TrackSection)-[:CONNECTS]->(b)`. Genereras
+med `docker/make-seed.mjs`. Samma data i båda databaserna. (Ändrat 2026-11-26 från
+handskriven data; användaren utgår från att RINF får återpubliceras som öppna data.)
 
 ## Tester
 

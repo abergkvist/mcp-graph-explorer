@@ -48,13 +48,13 @@ describe.each(targets)("$dialect", (config) => {
   it("describes the schema", async () => {
     const { text } = await read.call("get_schema");
     const labels = JSON.parse(text).labels.map((l: { name: string }) => l.name);
-    expect(labels).toEqual(expect.arrayContaining(["Station", "TrackSection"]));
+    expect(labels).toEqual(expect.arrayContaining(["Junction", "Station", "TrackSection"]));
   });
 
   it("returns a graph for nodes and a table for values", async () => {
-    const nodes = await read.call("run_cypher", { answer_query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun C" } });
+    const nodes = await read.call("run_cypher", { answer_query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun central" } });
     expect(nodes.data.nodes).toHaveLength(1);
-    expect(nodes.text).toContain("Falun C");
+    expect(nodes.text).toContain("Falun central");
     const rows = await read.call("run_cypher", { answer_query: "MATCH (s:Station) RETURN s.name LIMIT $n", params: { n: 3 } });
     expect(rows.data.table.rows).toHaveLength(3);
     expect(rows.data.nodes).toHaveLength(0);
@@ -62,7 +62,7 @@ describe.each(targets)("$dialect", (config) => {
 
   it("auto-connects result nodes", async () => {
     const { data } = await read.call("run_cypher", {
-      answer_query: "MATCH (s:Station {name: 'Falun C'})-[:CONNECTS]-(t:TrackSection) RETURN s, t",
+      answer_query: "MATCH (s:Station {name: 'Falun central'})-[:CONNECTS]-(t:TrackSection) RETURN s, t",
     });
     expect(data.meta.autoConnectedEdges).toBeGreaterThan(0);
     expect(data.meta.danglingEdges).toBe(0);
@@ -97,13 +97,13 @@ describe.each(targets)("$dialect", (config) => {
 
   it("shares the selection between two server instances and expands nodes", async () => {
     const view = await connect(config);
-    const falun = await view.call("run_cypher", { answer_query: "MATCH (s:Station {name: 'Falun C'}) RETURN s", connect: false });
+    const falun = await view.call("run_cypher", { answer_query: "MATCH (s:Station {name: 'Falun central'}) RETURN s", connect: false });
     const nodeId = falun.data.nodes[0].id;
 
     expect((await read.call("get_selection")).text).toBe("No node has been selected in the graph view.");
     await view.call("select_node", { nodeId });
     const selected = JSON.parse((await read.call("get_selection")).text);
-    expect(selected.node.props.name).toBe("Falun C");
+    expect(selected.node.props.name).toBe("Falun central");
     expect(selected.neighbors.length).toBeGreaterThan(0);
     expect(selected.neighbors[0]).toMatchObject({ relationship: "CONNECTS", node: { labels: ["TrackSection"] } });
     expect(selected.neighborsTruncated).toBe(false);

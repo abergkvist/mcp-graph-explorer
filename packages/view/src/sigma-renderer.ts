@@ -40,7 +40,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
       itemSizesReference: "screen", // sizes in pixels, not in layout units
       renderEdgeLabels: true,
       labelRenderedSizeThreshold: 4,
-      labelDensity: 1.5,
+      labelDensity: 0.7,
       stagePadding: 40,
     },
   });
@@ -65,13 +65,14 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     const styles = labelStyles(data.nodes.flatMap((n) => n.labels.slice(0, 1)));
     const near = new Set<string>(selected && graph.hasNode(selected) ? [selected, ...graph.neighbors(selected)] : []);
     const focus = highlight ?? (near.size ? near : null);
+    const scale = data.nodes.length > 100 ? 0.65 : 1;
 
     for (const node of data.nodes) {
       const style = styles.get(node.labels[0] ?? "");
       const faded = focus !== null && !focus.has(node.id);
       const degree = graph.degree(node.id);
       graph.mergeNodeAttributes(node.id, {
-        size: Math.min(6 + Math.sqrt(degree) * 1.6, 14) * (node.id === selected ? 1.5 : 1),
+        size: Math.min(6 + Math.sqrt(degree) * 1.6, 14) * scale * (node.id === selected ? 1.8 : 1),
         color: faded ? colors.faded : style ? colors.nodes[style.color] : colors.placeholder,
         shape: style?.shape ?? "circle",
         label: faded || node.placeholder ? "" : nodeName(node),
@@ -116,9 +117,12 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
       });
       for (const edge of next.edges) graph.addDirectedEdgeWithKey(edge.id, edge.source, edge.target, {});
       if (graph.order > 1) {
+        // Low gravity and many slow iterations untangle sparse networks. Above 300 nodes the
+        // Barnes-Hut approximation keeps it fast.
+        const large = graph.order > 300;
         forceAtlas2.assign(graph, {
-          iterations: known ? 80 : 400,
-          settings: { ...forceAtlas2.inferSettings(graph), adjustSizes: false, gravity: 0.8, scalingRatio: 12 },
+          iterations: known ? 200 : large ? 1200 : 3000,
+          settings: { adjustSizes: false, gravity: 0.05, scalingRatio: 10, slowDown: 2, barnesHutOptimize: large },
         });
       }
       paint();

@@ -7,7 +7,7 @@ Claude writes Cypher, this MCP server runs it against Neo4j or Memgraph over Bol
 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view shows the result as a graph,
 a table or a single value.
 
-![The graph view in dark theme, showing example data](docs/screenshot.png)
+![The graph view showing the example railway network](docs/screenshot.png)
 
 ## Quick start
 
@@ -20,8 +20,12 @@ pnpm build
 ```
 
 This starts Neo4j on `bolt://localhost:7687` (user `neo4j`, password `graphexplorer`) and Memgraph
-on `bolt://localhost:7688` (no login), both loaded with a small example railway network. The names,
-coordinates and lengths are approximate.
+on `bolt://localhost:7688` (no login), both loaded with the same railway network: 82 operational
+points and 84 sections of line in Dalarna and Gävle, Sweden ([data source](#data)).
+
+```
+(:Station | :Junction)-[:CONNECTS]->(:TrackSection)-[:CONNECTS]->(:Station | :Junction)
+```
 
 Add the server to `claude_desktop_config.json` (on macOS in
 `~/Library/Application Support/Claude/`), with absolute paths:
@@ -138,6 +142,15 @@ pnpm --filter @mcp-graph-explorer/view dev   # the view with example data
 
 Design notes are in [docs/](docs/) (the first version's design and plan are in Swedish).
 
+## Data
+
+The example network is a subset of the [Register of Infrastructure (RINF)](https://data.europa.eu/949)
+published as open data by the European Union Agency for Railways. It is regenerated with
+`node docker/make-seed.mjs <directory with the RINF CSV exports>`. The direction of `CONNECTS`
+follows the start and end of each section in RINF and does not restrict traffic. The data is example
+content: it may be outdated and must not be used for operations.
+
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE) for the code. The RINF data in `docker/seed.cypher` is not covered by it;
+the publisher's terms apply.

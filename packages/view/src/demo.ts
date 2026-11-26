@@ -1,4 +1,4 @@
-// Example data for `pnpm --filter @mcp-graph-explorer/view dev`; not part of the production build.
+// Made-up example data (not the real network) for `pnpm --filter @mcp-graph-explorer/view dev`; not part of the production build.
 import type { GraphResult, Json } from "@mcp-graph-explorer/normalizer";
 
 const lines = [

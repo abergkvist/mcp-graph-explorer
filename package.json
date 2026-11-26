@@ -1,0 +1,20 @@
+{
+  "name": "mcp-graph-explorer",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm build && vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests",
+    "test:integration": "pnpm build && vitest run .int.test --no-file-parallelism"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}

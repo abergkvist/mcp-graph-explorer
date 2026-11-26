@@ -157,6 +157,7 @@ Klick på bakgrunden rensar. Finns noden inte längre säger verktyget det.
 ## Säkerhet och gränser
 
 - Alla sessioner i READ access mode. Ingen regex-kontroll av frågor.
+- Varje fråga körs dessutom i en explicit transaktion som alltid rullas tillbaka (tillagt i planen).
 - **Måste verifieras först:** att Neo4j och Memgraph faktiskt avvisar skrivningar i en
   läs-session. Gör någon av dem inte det stannar arbetet för beslut.
 - Gränser **[val]**: 1 000 rader, 500 noder, 2 000 kanter, 30 s timeout. Radgränsen sätts

@@ -19,15 +19,19 @@ export const SHAPES = ["circle", "square", "diamond", "triangle"] as const;
 export interface LabelStyle { color: number; shape: (typeof SHAPES)[number] }
 export const COLOR_COUNT = 8;
 
-/** A label gets the same colour and shape in every result, unless two labels of one result collide. */
+/** A label gets the same colour and shape in every result, unless labels of one result collide. */
 export function labelStyles(labels: string[]): Map<string, LabelStyle> {
   const styles = new Map<string, LabelStyle>();
-  const taken = new Set<number>();
+  const colors = new Set<number>();
+  const shapes = new Set<number>();
   for (const label of [...new Set(labels)].sort()) {
-    let slot = [...label].reduce((hash, char) => (hash * 31 + char.codePointAt(0)!) >>> 0, 7) % COLOR_COUNT;
-    while (taken.has(slot) && taken.size < COLOR_COUNT) slot = (slot + 1) % COLOR_COUNT;
-    taken.add(slot);
-    styles.set(label, { color: slot, shape: SHAPES[slot % SHAPES.length]! });
+    const hash = [...label].reduce((h, char) => (h * 31 + char.codePointAt(0)!) >>> 0, 7);
+    const order = Array.from({ length: COLOR_COUNT }, (_, i) => (hash + i) % COLOR_COUNT);
+    const free = order.filter((slot) => !colors.has(slot));
+    const color = free.find((slot) => !shapes.has(slot % SHAPES.length)) ?? free[0] ?? order[0]!;
+    colors.add(color);
+    shapes.add(color % SHAPES.length);
+    styles.set(label, { color, shape: SHAPES[color % SHAPES.length]! });
   }
   return styles;
 }

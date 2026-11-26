@@ -1,4 +1,4 @@
-import type { GraphResult } from "@mcp-graph-explorer/normalizer";
+import type { GraphResult, ViewQuery } from "@mcp-graph-explorer/normalizer";
 
 /**
  * Accepts only payloads that can be drawn; old or foreign ones become undefined.
@@ -15,7 +15,22 @@ export function parseResult(structured: unknown): GraphResult | undefined {
     ids.add(node.id);
   }
   const connected = r.edges.every((e) => typeof e?.id === "string" && ids.has(e.source) && ids.has(e.target));
-  return connected ? (r as GraphResult) : undefined;
+  if (!connected) return undefined;
+  if (r.query === undefined || isQuery(r.query)) return r as GraphResult;
+  const { query: _broken, ...rest } = r as GraphResult;
+  return rest;
+}
+
+function isQuery(value: unknown): value is ViewQuery {
+  const query = value as Partial<ViewQuery> | null;
+  return typeof query?.answer_query === "string" && (query.context_query === undefined || typeof query.context_query === "string");
+}
+
+/** The query to run from what is in the editors; undefined when there is nothing to run. */
+export function editedQuery(original: ViewQuery, answer: string, context: string): ViewQuery | undefined {
+  if (!answer.trim()) return undefined;
+  const { context_query: _old, ...rest } = original;
+  return { ...rest, answer_query: answer, ...(context.trim() ? { context_query: context } : {}) };
 }
 
 /** What to tell the user after a committed write; undefined for reads. */

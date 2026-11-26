@@ -33,6 +33,7 @@ export function demo(kind: string): GraphResult {
     edges: [],
     table: table([], []),
     meta: { danglingEdges: 0, truncated: [], autoConnectedEdges: 0, dialect: "neo4j" },
+    query: { answer_query: "MATCH p = (:Station)-[:CONNECTS*2]-(:Station)\nRETURN p", params: {} },
   };
   if (kind === "table") {
     return { ...base, table: table(["s.name", "s.signature"], [["Gävle C", "Gä"], ["Falun C", "Fln"], ["Borlänge C", "Blg"]]) };

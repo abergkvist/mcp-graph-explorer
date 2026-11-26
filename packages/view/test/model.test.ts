@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { labelStyles, parseResult, pickView, searchNodes, writeNote } from "../src/model.ts";
+import { editedQuery, labelStyles, parseResult, pickView, searchNodes, writeNote } from "../src/model.ts";
 
 const result = (partial: Partial<GraphResult>): GraphResult => ({
   nodes: [],
@@ -35,6 +35,21 @@ describe("view model", () => {
     expect(writeNote(result({}).meta)).toBeUndefined();
     expect(writeNote({ ...result({}).meta, changes: {} })).toBe("Write committed");
     expect(writeNote({ ...result({}).meta, changes: { nodesCreated: 3 } })).toBe("Write committed: nodesCreated 3");
+  });
+  it("keeps a usable query and drops a broken one without losing the result", () => {
+    const query = { answer_query: "RETURN 1" };
+    expect(parseResult(result({ query }))?.query).toEqual(query);
+    for (const broken of [{}, { answer_query: 1 }, { answer_query: "A", context_query: 2 }, "A", null]) {
+      const parsed = parseResult(result({ query: broken as never }));
+      expect(parsed).toBeDefined();
+      expect(parsed!.query).toBeUndefined();
+    }
+  });
+  it("builds the query to run from the editors", () => {
+    const original = { answer_query: "A", context_query: "C", params: { n: 1 }, connect: false };
+    expect(editedQuery(original, "B", "D")).toEqual({ ...original, answer_query: "B", context_query: "D" });
+    expect(editedQuery(original, "B", "  \n")).toEqual({ answer_query: "B", params: { n: 1 }, connect: false });
+    expect(editedQuery(original, " ", "C")).toBeUndefined();
   });
   it("searches labels and property values", () => {
     const nodes = [

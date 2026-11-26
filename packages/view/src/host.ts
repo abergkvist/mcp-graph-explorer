@@ -1,7 +1,7 @@
 // Everything that talks to the MCP host.
 import { useEffect, useMemo, useState } from "react";
 import { App } from "@modelcontextprotocol/ext-apps";
-import type { GraphResult } from "@mcp-graph-explorer/normalizer";
+import type { GraphResult, ViewQuery } from "@mcp-graph-explorer/normalizer";
 import { parseResult } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
@@ -24,6 +24,10 @@ export interface Host {
   /** Tells the server which node is selected, so that the model can ask for it. */
   selectNode(id: string | null): void;
   expandNode(id: string): Promise<GraphResult>;
+  /** Runs a query the user edited; throws with the database's message. */
+  runQuery(query: ViewQuery): Promise<GraphResult>;
+  /** Back to Claude's query. */
+  resetQuery(): void;
 }
 
 const INLINE_HEIGHT = "480px";
@@ -82,20 +86,21 @@ export function useHost(): Host {
     );
   }, []);
 
-  const actions = useMemo(
-    () => ({
+  const actions = useMemo(() => {
+    const fetchResult = async (name: string, args: Record<string, unknown>, failure: string) => {
+      if (!app) throw new Error("Not connected to a host");
+      const next = stateOf(await app.callServerTool({ name, arguments: args }));
+      if (next.kind === "result") return next.result;
+      throw new Error(next.kind === "message" ? next.text : failure);
+    };
+    return {
       openInPanel: () => void app?.requestDisplayMode({ mode: "fullscreen" }),
       selectNode: (id: string | null) =>
         void app?.callServerTool({ name: "select_node", arguments: { nodeId: id } }).catch(console.error),
-      async expandNode(id: string) {
-        if (!app) throw new Error("Not connected to a host");
-        const response = await app.callServerTool({ name: "expand_node", arguments: { nodeId: id } });
-        const next = stateOf(response);
-        if (next.kind === "result") return next.result;
-        throw new Error(next.kind === "message" ? next.text : "Could not expand the node");
-      },
-    }),
-    [app],
-  );
+      expandNode: (id: string) => fetchResult("expand_node", { nodeId: id }, "Could not expand the node"),
+      runQuery: (query: ViewQuery) => fetchResult("run_view_query", { ...query }, "The query failed"),
+      resetQuery: () => void app?.callServerTool({ name: "reset_view_query", arguments: {} }).catch(console.error),
+    };
+  }, [app]);
   return { state, frame, ...actions };
 }

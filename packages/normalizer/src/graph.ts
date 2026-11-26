@@ -27,6 +27,7 @@ export function mergeGraphs(base: GraphResult, extra: GraphResult): GraphResult 
     edges: [...edges.values()],
     table: base.table,
     meta: {
+      ...base.meta,
       dialect: base.meta.dialect,
       danglingEdges: resolved.danglingEdges,
       truncated: [...new Set([...base.meta.truncated, ...extra.meta.truncated])],

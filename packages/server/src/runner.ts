@@ -19,7 +19,8 @@ export interface QueryRunner {
 const toDriverValue = (value: unknown): unknown => {
   if (typeof value === "number") return Number.isSafeInteger(value) ? neo4j.int(value) : value;
   if (Array.isArray(value)) return value.map(toDriverValue);
-  if (typeof value === "object" && value !== null) return toDriverParams(value as Record<string, unknown>);
+  // Only plain objects are walked, so driver values such as Integer pass through.
+  if (typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype) return toDriverParams(value as Record<string, unknown>);
   return value;
 };
 

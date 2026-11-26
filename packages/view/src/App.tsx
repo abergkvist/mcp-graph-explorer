@@ -1,14 +1,15 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mergeGraphs } from "@mcp-graph-explorer/normalizer/graph";
-import type { GraphResult } from "@mcp-graph-explorer/normalizer";
+import type { GraphResult, ViewQuery } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cellText, DataTable } from "./components/data-table.tsx";
 import { GraphCanvas } from "./components/graph-canvas.tsx";
 import { NodeDetails } from "./components/node-details.tsx";
+import { QueryPanel } from "./components/query-panel.tsx";
 import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
-import type { LayoutName } from "./layouts.ts";
+import { hasCoordinates, type LayoutName } from "./layouts.ts";
 import { pickView, searchNodes, writeNote } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
@@ -27,21 +28,43 @@ interface ResultProps {
   theme: Theme;
   expand?: () => void;
   host: Pick<Host, "selectNode" | "expandNode">;
+  editor?: { original: ViewQuery; run(query: ViewQuery): Promise<void>; reset(): void };
 }
 
-function Result({ result: initial, theme, expand, host }: ResultProps) {
+function Result({ result: given, theme, expand, host, editor }: ResultProps) {
   // Expanding adds to this copy; it is gone if the view is reloaded.
-  const [result, setResult] = useState(initial);
+  const [result, setResult] = useState(given);
   // Dev only: ?select=<node id> starts with a node selected, for visual checks.
   const [selected, setSelected] = useState<string | null>(import.meta.env.DEV ? new URLSearchParams(location.search).get("select") : null);
   const [expansion, setExpansion] = useState<{ busy?: boolean; error?: string }>({});
-  const view = pickView(result);
   const [tab, setTab] = useState("graph");
   const node = result.nodes.find((n) => n.id === selected);
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [layout, setLayout] = useState<LayoutName>("force");
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const matches = useMemo(() => searchNodes(result.nodes, query), [result, query]);
+  const matches = useMemo(() => searchNodes(result.nodes, search), [result, search]);
+  const [editing, setEditing] = useState(false);
+  const view = pickView(result);
+
+  // A run or a reset hands in another result. Layout, hidden labels and the editor stay as they are.
+  const [shown, setShown] = useState(given);
+  if (shown !== given) {
+    setShown(given);
+    setResult(given);
+    setSelected(null);
+    setExpansion({});
+    setSearch("");
+    if (!given.table.columns.length) setTab("graph");
+    if (layout === "geographic" && !hasCoordinates(given.nodes)) setLayout("force");
+  }
+  const current = useRef(given);
+  current.current = given;
+  // The server still remembers a node from the earlier result.
+  const selectedBefore = useRef(selected);
+  useEffect(() => {
+    if (selectedBefore.current) host.selectNode(null);
+  }, [given]);
+  useEffect(() => void (selectedBefore.current = selected), [selected]);
   const toggle = (label: string) =>
     setHidden((current) => {
       const next = new Set(current);
@@ -56,11 +79,14 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
   };
   const expandSelected = async (id: string) => {
     setExpansion({ busy: true });
+    const startedOn = current.current;
     try {
       const extra = await host.expandNode(id);
-      setResult((current) => mergeGraphs(current, extra));
+      if (current.current !== startedOn) return; // belongs to an earlier result
+      setResult((now) => mergeGraphs(now, extra));
       setExpansion({});
     } catch (error) {
+      if (current.current !== startedOn) return;
       setExpansion({ error: error instanceof Error ? error.message : String(error) });
     }
   };
@@ -82,10 +108,16 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
           </Tabs>
         )}
         <span className="text-xs text-muted-foreground tabular-nums">{summary}</span>
-        {expand && (
-          <Button variant="outline" size="sm" className="ml-auto" onClick={expand}>Open in panel</Button>
-        )}
+        <div className="ml-auto flex gap-2">
+          {editor && (
+            <Button variant={editing ? "secondary" : "outline"} size="sm" aria-expanded={editing} onClick={() => setEditing(!editing)}>
+              Cypher
+            </Button>
+          )}
+          {expand && <Button variant="outline" size="sm" onClick={expand}>Open in panel</Button>}
+        </div>
       </header>
+      {editor && <QueryPanel original={editor.original} hidden={!editing} onRun={editor.run} onReset={editor.reset} />}
       {result.meta.truncated.length > 0 && (
         <p className="border-b bg-muted px-3 py-1.5 text-xs">Result truncated: {result.meta.truncated.join(", ")}</p>
       )}
@@ -105,8 +137,8 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
             <Toolbar
               result={result}
               theme={theme}
-              query={query}
-              onQuery={setQuery}
+              query={search}
+              onQuery={setSearch}
               matches={matches?.size}
               hidden={hidden}
               onToggle={toggle}
@@ -130,6 +162,22 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
   );
 }
 
+/** Holds what is shown: Claude's result, or that of the user's latest run. */
+function QueryableResult({ result: initial, host, ...props }: Omit<ResultProps, "editor" | "host"> & {
+  host: Pick<Host, "selectNode" | "expandNode" | "runQuery" | "resetQuery">;
+}) {
+  const [shown, setShown] = useState(initial);
+  const editor = initial.query && {
+    original: initial.query,
+    run: async (query: ViewQuery) => setShown(await host.runQuery(query)),
+    reset: () => {
+      setShown({ ...initial }); // a copy, so that expansions are dropped too
+      host.resetQuery();
+    },
+  };
+  return <Result {...props} result={shown} host={host} editor={editor} />;
+}
+
 /** React removes the whole tree on an uncaught error; show a message instead of an empty panel. */
 class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -142,7 +190,7 @@ class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
 }
 
 export function App() {
-  const { state, frame, openInPanel, selectNode, expandNode } = useHost();
+  const { state, frame, openInPanel, selectNode, expandNode, runQuery, resetQuery } = useHost();
   // On the root element, so that the body, scrollbars and menus follow the theme too.
   useEffect(() => void document.documentElement.classList.toggle("dark", frame.theme === "dark"), [frame.theme]);
   return (
@@ -151,11 +199,11 @@ export function App() {
       {state.kind === "message" && <Message text={state.text} error={state.error} />}
       {state.kind === "result" && (
         <Fallback>
-          <Result
+          <QueryableResult
             result={state.result}
             theme={frame.theme}
             expand={frame.canExpand ? openInPanel : undefined}
-            host={{ selectNode, expandNode }}
+            host={{ selectNode, expandNode, runQuery, resetQuery }}
           />
         </Fallback>
       )}

@@ -60,11 +60,14 @@ Desktop, then ask for example "Show the whole railway network".
 | `GRAPH_DATABASE` | server default | Database name |
 | `GRAPH_DIALECT` | `neo4j` | `neo4j` or `memgraph` |
 | `GRAPH_ACCESS_MODE` | `read` | `read` or `write`, see below |
-| `GRAPH_STATE_DIR` | platform data directory | Where the selected node id is kept |
+| `GRAPH_STATE_DIR` | platform data directory | Where the selected node id and your last-run query, with its parameters, are kept |
 
 ## What you can do
 
 - **Graph, table or value**, depending on what the query returns.
+- **Cypher** shows the query behind the result. Edit it and press Run (⌘↵ / Ctrl↵) to update the
+  view; Reset brings back Claude's query and result. The editor only reads, also in write mode.
+  Ask Claude about your result and it looks the query up with `get_view_query`.
 - **Click a node** to see its properties, and **Expand** to add its neighbors.
 - **Refer to the selection in the chat** ("what connects to this one?"). Claude looks it up with
   `get_selection`.
@@ -81,7 +84,8 @@ Desktop, then ask for example "Show the whole railway network".
 | `query_cypher` | Claude | Runs a query and returns the data; shows nothing |
 | `show_result` | Claude | Runs `answer_query`, optionally `context_query`, and shows the result |
 | `get_selection` | Claude | The node you last clicked, with its neighbors |
-| `select_node`, `expand_node` | the view | Not visible to Claude |
+| `get_view_query` | Claude | The query you last ran in the view, with a summary of its result |
+| `select_node`, `expand_node`, `run_view_query`, `reset_view_query` | the view | Not visible to Claude |
 
 ## Security
 
@@ -102,7 +106,8 @@ Setting `GRAPH_ACCESS_MODE=write` is your decision. Know what it means:
   There is no undo.
 - If you have chosen "Always allow" for `query_cypher` in Claude Desktop, **you are not asked** before a
   write.
-- `show_result`, schema reading, expanding and selection stay read-only.
+- `show_result`, the Cypher editor, `get_view_query`, schema reading, expanding and selection stay
+  read-only.
 - The view does not say that something was written; only Claude is told what changed.
 - Use it against data you can restore.
 
@@ -120,8 +125,9 @@ If your database edition supports users with limited rights, connect with one th
 ### What is sent to Claude
 
 Schema example values, the data returned by `query_cypher` (up to 100 nodes, 100 relationships and
-20,000 characters per call), `show_result` summaries (including up to 50 table rows) and the selected
-node with its neighbors are sent to Claude. The complete graph of a shown result is part of the tool
+20,000 characters per call), `show_result` summaries (including up to 50 table rows), the selected
+node with its neighbors, and, when Claude calls `get_view_query`, the query you ran with its
+parameters and a summary of its result are sent to Claude. The complete graph of a shown result is part of the tool
 result, which Claude Desktop keeps with the conversation.
 
 ## Limits
@@ -131,8 +137,10 @@ size limit on what the view receives. Cuts are reported to Claude and shown in t
 
 - Built and tested for Claude Desktop with a local (stdio) server. Other MCP Apps hosts are untested.
 - The side panel is not available to every organization; the view also works inside the chat.
-- The selected node is shared between chats: the last click wins.
-- Expanded nodes, dragged positions and the chosen layout are gone if the view is reloaded.
+- The selected node and your last-run query are shared between chats: the last click or run wins.
+- Expanded nodes, dragged positions, the chosen layout and your edited query are gone if the view is
+  reloaded. Claude can still read the query you ran until it shows a new result.
+- Results shown by earlier versions have no Cypher button.
 
 ## Development
 
@@ -146,7 +154,7 @@ pnpm --filter @mcp-graph-explorer/view dev   # the view with example data
 |---|---|
 | `packages/normalizer` | Driver results to a JSON-safe graph and table; no MCP dependencies |
 | `packages/server` | MCP server, dialects, limits |
-| `packages/view` | The view, built into one HTML file (React, shadcn/ui, Sigma) |
+| `packages/view` | The view, built into one HTML file (React, shadcn/ui, Sigma, CodeMirror) |
 
 Design notes are in [docs/](docs/) (the first version's design and plan are in Swedish).
 

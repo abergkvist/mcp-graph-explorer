@@ -1,9 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import neo4j from "neo4j-driver";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.ts";
 import { adapterFor } from "../src/dialect.ts";
 import { applyLimits } from "../src/limits.ts";
 import { runCypher } from "../src/query.ts";
+import { createSelectionStore } from "../src/selection.ts";
 import { summarize } from "../src/summary.ts";
 import type { GraphResult, Json } from "@mcp-graph-explorer/normalizer";
 import type { QueryRunner, RunResult } from "../src/runner.ts";
@@ -118,5 +122,18 @@ describe("runCypher", () => {
     expect(summarize(result)).toMatch(/^Write mode: transaction committed\. nodesCreated: 1/);
     const read = await runCypher(fakeRunner([[1, 2]]).runner, adapter, { answer_query: "A" });
     expect(summarize(read)).not.toContain("committed");
+  });
+});
+
+describe("selection store", () => {
+  it("round-trips the selection per connection and clears it", () => {
+    const env = { GRAPH_STATE_DIR: mkdtempSync(join(tmpdir(), "gx-")) };
+    const a = createSelectionStore({ uri: "bolt://a" }, env);
+    const b = createSelectionStore({ uri: "bolt://b" }, env);
+    a.write("n1");
+    expect(a.read()?.nodeId).toBe("n1");
+    expect(b.read()).toBeUndefined();
+    a.write(null);
+    expect(a.read()).toBeUndefined();
   });
 });

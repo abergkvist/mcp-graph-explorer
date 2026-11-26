@@ -2,16 +2,21 @@ import { createHash } from "node:crypto";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
+import { LIMITS } from "./config.ts";
 import type { DialectAdapter } from "./dialect.ts";
+import { applyLimits } from "./limits.ts";
+import { describeSelection, neighborhood } from "./neighbors.ts";
 import { runCypher } from "./query.ts";
 import type { QueryRunner } from "./runner.ts";
 import { readSchema } from "./schema.ts";
+import type { SelectionStore } from "./selection.ts";
 import { summarize } from "./summary.ts";
 
 export interface ServerDeps {
   runner: QueryRunner;
   adapter: DialectAdapter;
   viewHtml: () => string;
+  selection: SelectionStore;
 }
 
 const CONTRACT =
@@ -30,7 +35,7 @@ async function reportingErrors<T>(work: () => Promise<T>) {
   }
 }
 
-export function createServer({ runner, adapter, viewHtml }: ServerDeps): McpServer {
+export function createServer({ runner, adapter, viewHtml, selection }: ServerDeps): McpServer {
   const server = new McpServer({ name: "graph-explorer", version: "0.1.0" });
   const writing = runner.accessMode === "write";
   const hash = createHash("sha256").update(viewHtml()).digest("hex").slice(0, 8);
@@ -63,6 +68,38 @@ export function createServer({ runner, adapter, viewHtml }: ServerDeps): McpServ
     const result = await runCypher(runner, adapter, input);
     return { content: text(summarize(result)), structuredContent: { ...result } };
   }));
+
+  // For the view only: hidden from the model.
+  const appOnly = { ui: { visibility: ["app" as const] } };
+
+  registerAppTool(server, "select_node", {
+    description: "Remember which node is selected in the graph view",
+    inputSchema: z.object({ nodeId: z.string().nullable() }),
+    _meta: appOnly,
+  }, ({ nodeId }) => reportingErrors(async () => {
+    selection.write(nodeId);
+    return { content: text("ok") };
+  }));
+
+  registerAppTool(server, "expand_node", {
+    description: "Neighbors of a node, for the graph view",
+    inputSchema: z.object({ nodeId: z.string() }),
+    annotations: { readOnlyHint: true },
+    _meta: appOnly,
+  }, ({ nodeId }) => reportingErrors(async () => {
+    const found = await neighborhood(runner, adapter, nodeId, LIMITS.maxExpandEdges);
+    if (!found) return { isError: true, content: text("This node no longer exists in the database.") };
+    return { content: text("ok"), structuredContent: { ...applyLimits(found) } };
+  }));
+
+  server.registerTool("get_selection", {
+    title: "Read selected node",
+    description:
+      "Returns the node the user last clicked in the graph view, with its properties and neighbors. Call this whenever " +
+      "the user refers to something in the graph without naming it, e.g. \"this\", \"that station\", \"here\", " +
+      "\"the selected node\", \"den här\", \"härifrån\", \"den markerade\".",
+    annotations: { readOnlyHint: true },
+  }, () => reportingErrors(async () => ({ content: text(await describeSelection(runner, adapter, selection.read())) })));
 
   const read = (uri: URL) => ({
     contents: [{

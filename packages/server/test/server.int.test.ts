@@ -1,8 +1,12 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.ts";
 import { adapterFor } from "../src/dialect.ts";
 import { createRunner, type QueryRunner } from "../src/runner.ts";
+import { createSelectionStore } from "../src/selection.ts";
 import { createServer } from "../src/server.ts";
 
 const targets: Config[] = [
@@ -11,10 +15,11 @@ const targets: Config[] = [
 ];
 
 const runners: QueryRunner[] = [];
+const stateEnv = { GRAPH_STATE_DIR: mkdtempSync(join(tmpdir(), "gx-")) };
 async function connect(config: Config) {
   const runner = createRunner(config);
   runners.push(runner);
-  const server = createServer({ runner, adapter: adapterFor(config.dialect), viewHtml: () => "<html>view</html>" });
+  const server = createServer({ runner, adapter: adapterFor(config.dialect), viewHtml: () => "<html>view</html>", selection: createSelectionStore(config, stateEnv) });
   const client = new Client({ name: "test", version: "0" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
@@ -89,6 +94,30 @@ describe.each(targets)("$dialect", (config) => {
       expect(res.text.length).toBeGreaterThan(10);
     }
   }, 60_000);
+
+  it("shares the selection between two server instances and expands nodes", async () => {
+    const view = await connect(config);
+    const falun = await view.call("run_cypher", { answer_query: "MATCH (s:Station {name: 'Falun C'}) RETURN s", connect: false });
+    const nodeId = falun.data.nodes[0].id;
+
+    expect((await read.call("get_selection")).text).toBe("No node has been selected in the graph view.");
+    await view.call("select_node", { nodeId });
+    const selected = JSON.parse((await read.call("get_selection")).text);
+    expect(selected.node.props.name).toBe("Falun C");
+    expect(selected.neighbors.length).toBeGreaterThan(0);
+    expect(selected.neighbors[0]).toMatchObject({ relationship: "CONNECTS", node: { labels: ["TrackSection"] } });
+    expect(selected.neighborsTruncated).toBe(false);
+
+    const expanded = await view.call("expand_node", { nodeId });
+    expect(expanded.data.nodes.length).toBe(selected.neighbors.length + 1);
+
+    for (const gone of ["999999999", "not-an-id"]) {
+      await view.call("select_node", { nodeId: gone });
+      expect((await read.call("get_selection")).text).toBe("The selected node no longer exists in the database.");
+    }
+    await view.call("select_node", { nodeId: null });
+    expect((await read.call("get_selection")).text).toBe("No node has been selected in the graph view.");
+  });
 
   it("serves the current view also for an outdated resource address", async () => {
     const res = await read.client.readResource({ uri: "ui://graph-explorer/view-00000000.html" });

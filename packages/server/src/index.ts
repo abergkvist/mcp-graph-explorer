@@ -4,12 +4,14 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { loadConfig } from "./config.ts";
 import { adapterFor } from "./dialect.ts";
 import { createRunner } from "./runner.ts";
+import { createSelectionStore } from "./selection.ts";
 import { createServer } from "./server.ts";
 
 // stdout belongs to MCP; log to stderr only.
 const config = loadConfig(process.env);
 const runner = createRunner(config);
 const adapter = adapterFor(config.dialect);
+const selection = createSelectionStore(config);
 
 const viewHtml = () => {
   try {
@@ -23,7 +25,7 @@ if (config.accessMode === "write") {
   console.error("graph-explorer: WARNING: GRAPH_ACCESS_MODE=write. Queries can change and delete data.");
 }
 
-serveStdio(() => createServer({ runner, adapter, viewHtml }), {
+serveStdio(() => createServer({ runner, adapter, viewHtml, selection }), {
   onerror: (error) => console.error("graph-explorer:", error.message),
 });
 process.stdin.on("end", () => void runner.close());

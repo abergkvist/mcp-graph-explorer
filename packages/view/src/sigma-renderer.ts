@@ -4,9 +4,10 @@ import forceAtlas2 from "graphology-layout-forceatlas2";
 import Sigma from "sigma";
 import { extremityArrow, pathCurved, pathLine, pathLoop, sdfCircle, sdfDiamond, sdfSquare, sdfTriangle } from "sigma/rendering";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { circularPositions, geographicPositions, type LayoutName, type Position } from "./layouts.ts";
+import { circularPositions, expansionPositions, geographicPositions, type LayoutName, type Position } from "./layouts.ts";
 import { labelStyles, nodeName } from "./model.ts";
 import { PALETTE, type Theme } from "./palette.ts";
+import { nodeSize, zoomSizeRatio } from "./sizing.ts";
 import type { CreateRenderer } from "./renderer.ts";
 
 export const createSigmaRenderer: CreateRenderer = (el, events) => {
@@ -42,6 +43,7 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
       enableNodeDrag: true,
       autoRescale: "once", // keeps the view still while a node is dragged; reset when the graph is rebuilt
       itemSizesReference: "screen", // sizes in pixels, not in layout units
+      zoomToSizeRatioFunction: zoomSizeRatio,
       renderEdgeLabels: true,
       labelRenderedSizeThreshold: 4,
       labelDensity: 0.7,
@@ -70,14 +72,13 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     const styles = labelStyles(data.nodes.flatMap((n) => n.labels.slice(0, 1)));
     const near = new Set<string>(selected && graph.hasNode(selected) ? [selected, ...graph.neighbors(selected)] : []);
     const focus = highlight ?? (near.size ? near : null);
-    const scale = data.nodes.length > 100 ? 0.65 : 1;
 
     for (const node of data.nodes) {
       const style = styles.get(node.labels[0] ?? "");
       const faded = focus !== null && !focus.has(node.id);
       const degree = graph.degree(node.id);
       graph.mergeNodeAttributes(node.id, {
-        size: Math.min(6 + Math.sqrt(degree) * 1.6, 14) * scale * (node.id === selected ? 1.8 : 1),
+        size: nodeSize(degree, node.id === selected, data.nodes.length),
         color: faded ? colors.faded : style ? colors.nodes[style.color] : colors.placeholder,
         shape: style?.shape ?? "circle",
         label: faded || node.placeholder ? "" : nodeName(node),
@@ -110,35 +111,28 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     graph.clear();
     // A circle is only a circle if every node is placed anew.
     const kept = layout === "circular" ? new Map<string, Position>() : previous;
+    const known = nodes.some((n) => kept.has(n.id));
     const target =
       layout === "geographic" ? geographicPositions(nodes, edges)
       : layout === "circular" ? circularPositions(nodes, edges)
+      : known ? expansionPositions(nodes, edges, kept)
       : undefined;
-    const known = nodes.some((n) => kept.has(n.id));
 
     nodes.forEach((node, i) => {
-      const old = kept.get(node.id);
-      let start = old ?? target?.get(node.id);
-      if (!start) {
-        const near = edges
-          .flatMap((e) => (e.source === node.id ? [e.target] : e.target === node.id ? [e.source] : []))
-          .map((id) => kept.get(id))
-          .find(Boolean);
-        const angle = (2 * Math.PI * i) / nodes.length;
-        start = near
-          ? { x: near.x + Math.cos(angle) * 10, y: near.y + Math.sin(angle) * 10 }
-          : { x: Math.cos(angle) * 100, y: Math.sin(angle) * 100 };
-      }
-      graph.addNode(node.id, { ...start, fixed: Boolean(old) });
+      // Without a target (a first force layout) start on a circle and let the forces sort it out.
+      const angle = (2 * Math.PI * i) / nodes.length;
+      const start = kept.get(node.id) ?? target?.get(node.id) ?? { x: Math.cos(angle) * 100, y: Math.sin(angle) * 100 };
+      graph.addNode(node.id, { ...start });
     });
     for (const edge of edges) graph.addDirectedEdgeWithKey(edge.id, edge.source, edge.target, {});
 
-    if (layout === "force" && graph.order > 1) {
+    // An expand only places the new nodes; running the forces again would pull them back in.
+    if (layout === "force" && !known && graph.order > 1) {
       // Low gravity and many slow iterations untangle sparse networks. Above 300 nodes the
       // Barnes-Hut approximation keeps it fast.
       const large = graph.order > 300;
       forceAtlas2.assign(graph, {
-        iterations: known ? 200 : large ? 1200 : 3000,
+        iterations: large ? 1200 : 3000,
         settings: { adjustSizes: false, gravity: 0.05, scalingRatio: 10, slowDown: 2, barnesHutOptimize: large },
       });
     }

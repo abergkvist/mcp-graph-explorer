@@ -3,9 +3,10 @@
 Ask questions about a graph database in Claude Desktop and see the answer as an interactive graph
 in the side panel, where it does not scroll away.
 
-Claude writes Cypher, this MCP server runs it against Neo4j or Memgraph over Bolt, and an
-[MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view shows the result as a graph,
-a table or a single value.
+Claude writes Cypher and this MCP server runs it against Neo4j or Memgraph over Bolt. Claude can
+explore and check without showing anything, and then shows the final answer in an
+[MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view as a graph, a table or a single
+value.
 
 ![The graph view showing the example railway network](docs/screenshot.png)
 
@@ -77,7 +78,8 @@ Desktop, then ask for example "Show the whole railway network".
 | Tool | For | Does |
 |---|---|---|
 | `get_schema` | Claude | Labels, relationship types and properties with example values |
-| `run_cypher` | Claude | Runs `answer_query`, optionally `context_query`, and shows the result |
+| `query_cypher` | Claude | Runs a query and returns the data; shows nothing |
+| `show_result` | Claude | Runs `answer_query`, optionally `context_query`, and shows the result |
 | `get_selection` | Claude | The node you last clicked, with its neighbors |
 | `select_node`, `expand_node` | the view | Not visible to Claude |
 
@@ -96,11 +98,12 @@ Memgraph ignores read mode for auto-commit queries. The server never uses them.
 
 Setting `GRAPH_ACCESS_MODE=write` is your decision. Know what it means:
 
-- Claude's `answer_query` can **create, change and delete data**, and it is committed immediately.
+- Claude's `query_cypher` can **create, change and delete data**, and it is committed immediately.
   There is no undo.
-- If you have chosen "Always allow" for the tool in Claude Desktop, **you are not asked** before a
+- If you have chosen "Always allow" for `query_cypher` in Claude Desktop, **you are not asked** before a
   write.
-- Schema reading, `context_query`, expanding and selection stay read-only.
+- `show_result`, schema reading, expanding and selection stay read-only.
+- The view does not say that something was written; only Claude is told what changed.
 - Use it against data you can restore.
 
 ### What read mode does not stop
@@ -116,9 +119,10 @@ If your database edition supports users with limited rights, connect with one th
 
 ### What is sent to Claude
 
-Schema example values, result summaries (including up to 50 table rows) and the selected node with
-its neighbors are sent to Claude. The complete graph is part of the tool result, which Claude
-Desktop keeps with the conversation.
+Schema example values, the data returned by `query_cypher` (up to 100 nodes, 100 relationships and
+20,000 characters per call), `show_result` summaries (including up to 50 table rows) and the selected
+node with its neighbors are sent to Claude. The complete graph of a shown result is part of the tool
+result, which Claude Desktop keeps with the conversation.
 
 ## Limits
 

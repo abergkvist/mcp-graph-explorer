@@ -18,6 +18,8 @@ export const LIMITS = {
   maxTableRowsForModel: 50,
   maxNeighbors: 25,
   maxExpandEdges: 50,
+  /** What query_cypher returns to the model. */
+  query: { maxNodes: 100, maxEdges: 100, maxStructuredChars: 20_000 },
 } as const;
 
 function oneOf<T extends string>(name: string, value: string | undefined, allowed: readonly T[]): T {

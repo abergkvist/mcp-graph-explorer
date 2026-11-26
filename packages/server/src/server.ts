@@ -6,7 +6,7 @@ import { LIMITS } from "./config.ts";
 import type { DialectAdapter } from "./dialect.ts";
 import { applyLimits } from "./limits.ts";
 import { describeSelection, neighborhood } from "./neighbors.ts";
-import { runCypher } from "./query.ts";
+import { queryData, runCypher } from "./query.ts";
 import type { QueryRunner } from "./runner.ts";
 import { readSchema } from "./schema.ts";
 import type { SelectionStore } from "./selection.ts";
@@ -36,7 +36,11 @@ async function reportingErrors<T>(work: () => Promise<T>) {
 }
 
 export function createServer({ runner, adapter, viewHtml, selection }: ServerDeps): McpServer {
-  const server = new McpServer({ name: "graph-explorer", version: "0.1.0" });
+  const server = new McpServer({ name: "graph-explorer", version: "0.1.0" }, {
+    instructions:
+      "To answer from the database, explore and check with query_cypher, which shows nothing, " +
+      "then call show_result exactly once with the final query.",
+  });
   const writing = runner.accessMode === "write";
   const hash = createHash("sha256").update(viewHtml()).digest("hex").slice(0, 8);
   const viewUri = `ui://graph-explorer/view-${hash}.html`;
@@ -49,12 +53,27 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
     annotations: { readOnlyHint: true },
   }, () => reportingErrors(async () => ({ content: text(JSON.stringify(await readSchema(runner, adapter))) })));
 
-  registerAppTool(server, "run_cypher", {
-    title: "Run Cypher",
+  // No view: exploring must not draw anything.
+  server.registerTool("query_cypher", {
+    title: "Query graph",
     description:
       (writing
-        ? "Run a Cypher query (WRITE MODE: it can change and delete data) and show the result in the graph view. "
-        : "Run a read-only Cypher query and show the result in the graph view. ") + CONTRACT,
+        ? "Run a Cypher query (WRITE MODE: it can change and delete data) and get the data back. "
+        : "Run a read-only Cypher query and get the data back. ") +
+      "Nothing is shown to the user. Use it for all exploring and checking. When you have the answer, show it with show_result.",
+    inputSchema: z.object({
+      query: z.string().describe("Cypher to run"),
+      params: z.record(z.string(), z.unknown()).optional().describe("Query parameters"),
+    }),
+    annotations: writing ? { readOnlyHint: false, destructiveHint: true } : { readOnlyHint: true },
+  }, (input) => reportingErrors(async () => ({ content: text(await queryData(runner, adapter, input)) })));
+
+  registerAppTool(server, "show_result", {
+    title: "Show result",
+    description:
+      "Show the final answer to the user in the graph view. Call it exactly once for each question that is answered " +
+      "from the database, also when the answer is a single value or a table. Every call opens a new view, so do not " +
+      "use it to explore or to test a query: do that with query_cypher first. " + CONTRACT,
     inputSchema: z.object({
       answer_query: z.string().describe("Cypher that answers the question"),
       context_query: z.string().optional().describe("Read-only Cypher returning a subgraph to show next to the answer"),
@@ -62,7 +81,7 @@ export function createServer({ runner, adapter, viewHtml, selection }: ServerDep
       connect: z.union([z.literal("auto"), z.boolean()]).optional()
         .describe("Fetch relationships between the returned nodes. Default 'auto': only if the result has none."),
     }),
-    annotations: writing ? { readOnlyHint: false, destructiveHint: true } : { readOnlyHint: true },
+    annotations: { readOnlyHint: true },
     _meta: { ui: { resourceUri: viewUri } },
   }, (input) => reportingErrors(async () => {
     const result = await runCypher(runner, adapter, input);

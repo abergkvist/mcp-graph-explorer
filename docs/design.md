@@ -21,7 +21,8 @@ scrollar bort.
 
 ## Inte i v1
 
-- Skrivningar mot databasen.
+- Egna skrivverktyg. Skrivningar går bara att slå på för `run_cypher`, se Säkerhet.
+- Extra bekräftelseflagga i `.env` för skrivläget (tas senare).
 - Egen historik eller bakåt/framåt-knappar. Historiken är de tidigare vyerna i chatten.
 - `sendMessage` och `updateModelContext` från vyn.
 - Streamable HTTP, andra databaser (ArcadeDB, Apache AGE), publicering på npm **[val]**.
@@ -36,7 +37,7 @@ ChatGPT är otestat och README lovar inget om det **[val]**.
 ## Misslyckande, även om allt "fungerar"
 
 - Hela grafen skickas till modellen i text.
-- En fråga kan ändra data.
+- En fråga kan ändra data utan att användaren uttryckligen slagit på skrivläget.
 - Resultat kapas utan att det syns.
 - Repot sväller: extra paket, abstraktioner eller tester som inte behövs.
 
@@ -84,7 +85,7 @@ Kod, verktygsbeskrivningar, UI-texter och README skrivs på engelska **[val]**.
 ## Konfiguration **[val]**
 
 Miljövariabler: `GRAPH_URI`, `GRAPH_USER`, `GRAPH_PASSWORD`, `GRAPH_DATABASE` (valfri),
-`GRAPH_DIALECT` (`neo4j` eller `memgraph`).
+`GRAPH_DIALECT` (`neo4j` eller `memgraph`), `GRAPH_ACCESS_MODE` (`read`, förval, eller `write`).
 
 ## Normaliserat format
 
@@ -156,10 +157,19 @@ Klick på bakgrunden rensar. Finns noden inte längre säger verktyget det.
 
 ## Säkerhet och gränser
 
-- Alla sessioner i READ access mode. Ingen regex-kontroll av frågor.
-- Varje fråga körs dessutom i en explicit transaktion som alltid rullas tillbaka (tillagt i planen).
-- **Måste verifieras först:** att Neo4j och Memgraph faktiskt avvisar skrivningar i en
-  läs-session. Gör någon av dem inte det stannar arbetet för beslut.
+- **Förval `read`:** READ-session, explicit transaktion som alltid rullas tillbaka. Ingen
+  regex-kontroll av frågor.
+- Verifierat 2026-11-26: Neo4j avvisar skrivningar i läsläge. Memgraph gör det **bara i en
+  explicit transaktion**; en fristående fråga i en READ-session skriver. Kör därför aldrig
+  fristående frågor.
+- **`write` är användarens uttryckliga val.** Då får `run_cypher`s `answer_query` skriva och
+  ändringen committas. Allt annat (context, schema, auto-connect, markering, expandering) läser.
+  Verktyget märks som destruktivt, och beskrivningen och startloggen säger att skrivning är på.
+- README förklarar varför `read` är förval (frågorna skrivs av Claude, och text i datan kan
+  påverka vad Claude gör) och vad `write` innebär: ändringar och raderingar utan ångra, och
+  utan fråga om verktyget är tillåtet med "Always allow".
+- `LOAD CSV` kan även i läsläge läsa filer (Memgraph) eller nätverksadresser (Neo4j) från
+  databasservern. README säger det.
 - Gränser **[val]**: 1 000 rader, 500 noder, 2 000 kanter, 30 s timeout. Radgränsen sätts
   genom att sluta läsa resultatet, inte genom att lägga `LIMIT` i frågan.
 - `structuredContent` hålls under cirka 140 000 tecken: långa strängar kortas först, sedan

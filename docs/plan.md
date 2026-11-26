@@ -14,10 +14,10 @@
 
 - Repot hålls minimalt: bara nödvändiga paket, filer och enhetstester.
 - Kod, verktygsbeskrivningar, UI-texter och README på engelska. Licens Apache-2.0 (`"license": "Apache-2.0"` i varje `package.json`).
-- Alla databassessioner i `neo4j.session.READ`. Ingen regex-kontroll av frågor. Servern skriver inte om användarens Cypher.
+- `GRAPH_ACCESS_MODE` är `read` (förval) eller `write`. I `read`: `neo4j.session.READ`, explicit transaktion, alltid rollback. Aldrig fristående `session.run`. I `write` får bara `run_cypher`s `answer_query` skriva (commit). Ingen regex-kontroll av frågor. Servern skriver inte om användarens Cypher.
 - Modellen får aldrig hela grafen i text. All kapning syns i `meta.truncated`, i texten till modellen och i vyn.
 - Gränser: `maxRows 1000`, `maxNodes 500`, `maxEdges 2000`, `timeoutMs 30000`, `maxStructuredChars 140000`, `maxTableRowsForModel 50`, `maxNeighbors 25`, `maxExpandEdges 50`.
-- Inget `sendMessage`, inget `updateModelContext`, inga skrivverktyg.
+- Inget `sendMessage`, inget `updateModelContext`, inga egna skrivverktyg.
 - stdout i servern är reserverad för MCP; loggning går till stderr.
 - Beroenden läggs till med `pnpm add` (senaste version), aldrig med versionsnummer ur minnet. Läs de installerade typdefinitionerna för Sigma 4 och MCP-paketen; gissa inte API:er.
 - Små commits. Varje commitmeddelande slutar med den attributionsrad sessionen anger.
@@ -270,7 +270,7 @@ describe("mergeGraphs", () => {
 
 ```ts
 // config.ts
-export interface Config { uri: string; user: string; password: string; database?: string; dialect: Dialect }
+export interface Config { uri: string; user: string; password: string; database?: string; dialect: Dialect; accessMode: "read" | "write" }
 export function loadConfig(env: Record<string, string | undefined>): Config
 export const LIMITS: { maxRows: 1000; maxNodes: 500; maxEdges: 2000; timeoutMs: 30000;
   maxStructuredChars: 140000; maxTableRowsForModel: 50; maxNeighbors: 25; maxExpandEdges: 50 }
@@ -284,17 +284,18 @@ export interface DialectAdapter {
 export function adapterFor(dialect: Dialect): DialectAdapter
 // runner.ts
 export function toDriverParams(params: Record<string, unknown>): Record<string, unknown>
-export interface RunResult extends ResultInput { truncated: boolean }
+export interface RunResult extends ResultInput { truncated: boolean; changes?: Record<string, number> }
 export interface QueryRunner {
-  run(cypher: string, params?: Record<string, unknown>, maxRows?: number): Promise<RunResult>;
+  readonly accessMode: "read" | "write";
+  run(cypher: string, params?: Record<string, unknown>, maxRows?: number, write?: boolean): Promise<RunResult>;
   close(): Promise<void>;
 }
 export function createRunner(config: Config): QueryRunner
 ```
 
-Miljövariabler: `GRAPH_URI` (förval `bolt://localhost:7687`), `GRAPH_USER`, `GRAPH_PASSWORD` (förval tomma), `GRAPH_DATABASE`, `GRAPH_DIALECT` (förval `neo4j`; annat värde än `neo4j`/`memgraph` ger fel).
+Miljövariabler: `GRAPH_URI` (förval `bolt://localhost:7687`), `GRAPH_USER`, `GRAPH_PASSWORD` (förval tomma), `GRAPH_DATABASE`, `GRAPH_DIALECT` (förval `neo4j`; annat värde än `neo4j`/`memgraph` ger fel), `GRAPH_ACCESS_MODE` (förval `read`; annat värde än `read`/`write` ger fel).
 
-Runner: READ-session, **explicit transaktion med `timeout: LIMITS.timeoutMs` som alltid rullas tillbaka** (andra skyddet utöver läsläget), `toDriverParams` på parametrarna, läs högst `maxRows` poster och sätt `truncated` om det fanns fler. En egen klocka stänger sessionen om databasen inte håller tidsgränsen. Drivrutinen skapas utan att ansluta.
+Runner: `write` gäller bara om anropet begär det **och** `accessMode` är `write`; då WRITE-session, hela resultatet konsumeras och transaktionen committas (rollback vid fel), `changes` fylls av räknarna som är större än 0. Annars READ-session, **explicit transaktion med `timeout: LIMITS.timeoutMs` som alltid rullas tillbaka**. I båda fallen: `toDriverParams` på parametrarna, läs högst `maxRows` poster och sätt `truncated` om det fanns fler. En egen klocka stänger sessionen om databasen inte håller tidsgränsen. Drivrutinen skapas utan att ansluta.
 
 - [ ] **Step 1:** Failing tests:
 
@@ -338,7 +339,7 @@ export function runCypher(runner: QueryRunner, adapter: DialectAdapter, input: C
 ```
 
 - `applyLimits`: kapa noder, ta bort kanter vars ändpunkt försvann, kapa kanter. Är `JSON.stringify` fortfarande för lång: korta strängar över 500 tecken (`"properties"`), halvera sedan tabellraderna (`"rows"`) och noderna (`"nodes"`) tills det ryms. Varje åtgärd syns i `meta.truncated`, utan dubbletter.
-- `runCypher`: kör båda frågorna med samma `params`; `mergeGraphs(answer, context)`; auto-connect enligt specen med `MATCH (a)-[r]->(b) WHERE <id a> IN $ids AND <id b> IN $ids RETURN r LIMIT $max` (platshållare räknas inte med i `ids`); `autoConnectedEdges` = antalet **nya** kanter; sist `applyLimits`.
+- `runCypher`: kör båda frågorna med samma `params` (bara `answer_query` med `write: true`); i skrivläge börjar sammanfattningen med `Write mode: transaction committed.` följt av räknarna; `mergeGraphs(answer, context)`; auto-connect enligt specen med `MATCH (a)-[r]->(b) WHERE <id a> IN $ids AND <id b> IN $ids RETURN r LIMIT $max` (platshållare räknas inte med i `ids`); `autoConnectedEdges` = antalet **nya** kanter; sist `applyLimits`.
 - `summarize`, i denna ordning och utelämnat när tomt: `Graph: N nodes, M relationships`; antal per label och per typ; `Most connected:` högst 5 noder som `label name (id)` där namn är `props.name`, annars `props.title`, annars bara id; `Table:` kolumner och högst 50 rader som JSON-rader, med `(K more rows not shown)`; `Truncated: …`; `No results.` om allt är tomt.
 
 - [ ] **Step 1:** Failing tests (`graph(nodes, edges, rows)` är en lokal hjälpare som bygger ett `GraphResult`):
@@ -388,6 +389,7 @@ export function createServer(deps: { runner: QueryRunner; adapter: DialectAdapte
 ```
 
 - `index.ts`: `serveStdio` (se `spike/server.ts`); `viewHtml` läser `../../view/dist/index.html`, eller en kort "view not built"-sida.
+- I skrivläge: `run_cypher` har `annotations: { readOnlyHint: false, destructiveHint: true }`, beskrivningens första mening byts mot `Run a Cypher query (WRITE MODE: it can change and delete data) and show the result in the graph view.`, och `index.ts` skriver en varning till stderr. I läsläge `readOnlyHint: true`.
 - `get_schema`: urval av högst 10 000 noder och relationer, högst 3 exempelvärden per property, strängar kortade till 80 tecken.
 - `run_cypher`: `registerAppTool` med `_meta.ui.resourceUri`; `content` = `summarize(result)`, `structuredContent` = resultatet. Databasfel returneras som `{ isError: true }` med databasens meddelande.
 - Verktygsbeskrivningen för `run_cypher`, ordagrant:
@@ -398,7 +400,7 @@ export function createServer(deps: { runner: QueryRunner; adapter: DialectAdapte
   - `get_schema` innehåller labels `Station` och `TrackSection`;
   - `run_cypher` med `MATCH (s:Station {name: $name}) RETURN s` och `params: {name: "Falun C"}` ger 1 nod;
   - `MATCH (s:Station) RETURN s.name LIMIT $n` med `{n: 3}` ger 3 rader och ingen nod;
-  - `CREATE (:ReadModeProbe)` ger `isError` och inget skapas;
+  - `CREATE (:ReadModeProbe)` ger `isError` och inget skapas; med `accessMode: "write"` skapas noden, sammanfattningen säger `committed`, och samma `CREATE` som `context_query` ger `isError` (städa efteråt);
   - en runner mot `bolt://localhost:1` ger `isError` med text, och ett andra anrop besvaras också;
   - `resources/read` på `ui://graph-explorer/view-00000000.html` lyckas.
 - [ ] **Step 2:** `pnpm test:integration` → FAIL. **Step 3:** Implementera. **Step 4:** `pnpm build && pnpm test && pnpm test:integration` → PASS.
@@ -524,7 +526,7 @@ it("searches labels and property values", () => {
 
 **Files:** Create: `README.md`, `.github/workflows/ci.yml`, `docs/screenshot.png`; Delete: `spike/`
 
-- [ ] **Step 1:** README: syfte, skärmdump eller gif, `docker compose -f docker/compose.yaml up -d`, `pnpm install && pnpm build`, Claude Desktop-konfiguration för båda databaserna (absolut sökväg till `node` och `packages/server/dist/index.js`, miljövariablerna), verktygen, säkerhet (läsläge, rollback, att procedurer kan ha sidoeffekter och att en databasanvändare med bara läsrätt rekommenderas, att schemaexempel och resultatsammanfattningar skickas till Claude), begränsningar (testat i Claude Desktop; sidopanelen finns inte för alla; gemensam markering), licens.
+- [ ] **Step 1:** README: syfte, skärmdump eller gif, `docker compose -f docker/compose.yaml up -d`, `pnpm install && pnpm build`, Claude Desktop-konfiguration för båda databaserna (absolut sökväg till `node` och `packages/server/dist/index.js`, miljövariablerna), verktygen, säkerhet (varför `read` är förval, vad `GRAPH_ACCESS_MODE=write` innebär, `LOAD CSV`, rollback, att procedurer kan ha sidoeffekter och att en databasanvändare med bara läsrätt rekommenderas, att schemaexempel och resultatsammanfattningar skickas till Claude), begränsningar (testat i Claude Desktop; sidopanelen finns inte för alla; gemensam markering), licens.
 - [ ] **Step 2:** CI: Node 22, `pnpm install --frozen-lockfile`, `build`, `typecheck`, `test`.
 - [ ] **Step 3:** Ta bort `spike/` och `graph-spike` ur `claude_desktop_config.json` (bara den posten).
 - [ ] **Step 4:** Verifiera från ren klon: stegen i README fungerar och `pnpm build && pnpm test` går igenom.

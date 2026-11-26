@@ -81,7 +81,7 @@ export function createRunner(config: Config): QueryRunner {
       let timer: NodeJS.Timeout | undefined;
       // Backstop for databases that do not enforce the transaction timeout.
       const deadline = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Query timed out after ${LIMITS.timeoutMs} ms`)), LIMITS.timeoutMs + 1000);
+        timer = setTimeout(() => reject(new Error(`Query timed out after ${LIMITS.timeoutMs} ms${writing ? "; the write may or may not have been committed" : ""}`)), LIMITS.timeoutMs + 1000);
       });
       try {
         return await Promise.race([execute(session, cypher, params, maxRows, writing), deadline]);

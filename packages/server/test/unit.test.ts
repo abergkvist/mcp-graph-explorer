@@ -101,6 +101,16 @@ describe("runCypher", () => {
     expect((await run([[node(1), rel]], true)).calls).toBe(2);
     expect((await run([[node(1), node(2)]], false)).calls).toBe(1);
   });
+  it("says that a write was committed even if the follow-up query fails", async () => {
+    const fake = fakeRunner([[1, 2]], "write");
+    const failing: QueryRunner = {
+      ...fake.runner,
+      run: (cypher, params, maxRows, write) =>
+        cypher === "C" ? Promise.reject(new Error("boom")) : fake.runner.run(cypher, params, maxRows, write),
+    };
+    await expect(runCypher(failing, adapter, { answer_query: "A", context_query: "C" }))
+      .rejects.toThrow(/committed.*Do not run answer_query again.*boom/);
+  });
   it("lets only the answer query write, and says so", async () => {
     const fake = fakeRunner([[1, 2]], "write");
     const result = await runCypher(fake.runner, adapter, { answer_query: "A", context_query: "C" });

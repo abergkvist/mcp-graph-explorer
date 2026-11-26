@@ -10,7 +10,11 @@ export interface DialectAdapter {
   schemaQueries: { nodes: string; relationships: string };
 }
 
-const schemaQueries = { nodes: "", relationships: "" };
+// Portable Cypher, based on a sample so that large databases stay responsive.
+const schemaQueries = {
+  nodes: "MATCH (n) WITH n LIMIT 10000 UNWIND labels(n) AS name RETURN name, properties(n) AS props",
+  relationships: "MATCH ()-[r]->() WITH r LIMIT 10000 RETURN type(r) AS name, properties(r) AS props",
+};
 
 const adapters: Record<Dialect, DialectAdapter> = {
   neo4j: {

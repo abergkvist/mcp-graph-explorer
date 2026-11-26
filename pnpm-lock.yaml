@@ -29,9 +29,6 @@ importers:
       '@mcp-graph-explorer/normalizer':
         specifier: workspace:*
         version: link:../normalizer
-      '@modelcontextprotocol/client':
-        specifier: ^2.4.0
-        version: 2.4.0
       '@modelcontextprotocol/core':
         specifier: ^2.4.0
         version: 2.4.0
@@ -47,6 +44,10 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ^2.4.0
+        version: 2.4.0
 
   packages/view:
     dependencies:

@@ -69,6 +69,8 @@ Desktop, then ask for example "Show the whole railway network".
   view; Reset brings back Claude's query and result. The editor only reads, also in write mode.
   Ask Claude about your result and it looks the query up with `get_view_query`.
 - **Click a node** to see its properties, and **Expand** to add its neighbors.
+- **Click a relationship** to see its type, ends and properties. Claude cannot look up a selected
+  relationship, only a selected node.
 - **Refer to the selection in the chat** ("what connects to this one?"). Claude looks it up with
   `get_selection`.
 - **Drag** nodes to rearrange them.

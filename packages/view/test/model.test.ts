@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { editedQuery, labelStyles, parseResult, pickView, searchNodes, writeNote } from "../src/model.ts";
+import { editedQuery, labelStyles, parseResult, pickView, searchNodes, selectionFocus, writeNote } from "../src/model.ts";
 
 const result = (partial: Partial<GraphResult>): GraphResult => ({
   nodes: [],
@@ -50,6 +50,15 @@ describe("view model", () => {
     expect(editedQuery(original, "B", "D")).toEqual({ ...original, answer_query: "B", context_query: "D" });
     expect(editedQuery(original, "B", "  \n")).toEqual({ answer_query: "B", params: { n: 1 }, connect: false });
     expect(editedQuery(original, " ", "C")).toBeUndefined();
+  });
+  it("keeps a selected node with its neighbours, or a selected relationship with its ends, in focus", () => {
+    const edge = (id: string, source: string, target: string) => ({ id, type: "T", source, target, props: {} });
+    // "1" is both a node id and a relationship id, as it can be in Memgraph.
+    const edges = [edge("1", "1", "2"), edge("2", "2", "3"), edge("3", "3", "4")];
+    expect(selectionFocus({ kind: "node", id: "1" }, edges)).toEqual({ nodes: new Set(["1", "2"]), edges: new Set(["1"]) });
+    expect(selectionFocus({ kind: "edge", id: "2" }, edges)).toEqual({ nodes: new Set(["2", "3"]), edges: new Set(["2"]) });
+    expect(selectionFocus({ kind: "edge", id: "gone" }, edges)).toBeNull();
+    expect(selectionFocus(null, edges)).toBeNull();
   });
   it("searches labels and property values", () => {
     const nodes = [

@@ -4,13 +4,14 @@ import type { GraphResult, ViewQuery } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cellText, DataTable } from "./components/data-table.tsx";
+import { EdgeDetails } from "./components/edge-details.tsx";
 import { GraphCanvas } from "./components/graph-canvas.tsx";
 import { NodeDetails } from "./components/node-details.tsx";
 import { QueryPanel } from "./components/query-panel.tsx";
 import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
 import { hasCoordinates, type LayoutName } from "./layouts.ts";
-import { pickView, searchNodes, writeNote } from "./model.ts";
+import { pickView, searchNodes, writeNote, type Selection } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -35,10 +36,15 @@ function Result({ result: given, theme, expand, host, editor }: ResultProps) {
   // Expanding adds to this copy; it is gone if the view is reloaded.
   const [result, setResult] = useState(given);
   // Dev only: ?select=<node id> starts with a node selected, for visual checks.
-  const [selected, setSelected] = useState<string | null>(import.meta.env.DEV ? new URLSearchParams(location.search).get("select") : null);
+  const [selected, setSelected] = useState<Selection | null>(() => {
+    const id = import.meta.env.DEV ? new URLSearchParams(location.search).get("select") : null;
+    return id ? { kind: "node", id } : null;
+  });
   const [expansion, setExpansion] = useState<{ busy?: boolean; error?: string }>({});
   const [tab, setTab] = useState("graph");
-  const node = result.nodes.find((n) => n.id === selected);
+  const byId = (id: string) => result.nodes.find((n) => n.id === id);
+  const node = selected?.kind === "node" ? byId(selected.id) : undefined;
+  const edge = selected?.kind === "edge" ? result.edges.find((e) => e.id === selected.id) : undefined;
   const [search, setSearch] = useState("");
   const [layout, setLayout] = useState<LayoutName>("force");
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -72,10 +78,11 @@ function Result({ result: given, theme, expand, host, editor }: ResultProps) {
       return next;
     });
 
-  const select = (id: string | null) => {
-    setSelected(id);
+  const select = (next: Selection | null) => {
+    setSelected(next);
     setExpansion({});
-    host.selectNode(id);
+    // Claude only knows about nodes; selecting a relationship forgets the earlier node.
+    host.selectNode(next?.kind === "node" ? next.id : null);
   };
   const expandSelected = async (id: string) => {
     setExpansion({ busy: true });
@@ -154,6 +161,7 @@ function Result({ result: given, theme, expand, host, editor }: ResultProps) {
                 onClose={() => select(null)}
               />
             )}
+            {edge && <EdgeDetails edge={edge} source={byId(edge.source)!} target={byId(edge.target)!} onClose={() => select(null)} />}
           </div>
           {tab === "table" && <DataTable table={result.table} />}
         </>

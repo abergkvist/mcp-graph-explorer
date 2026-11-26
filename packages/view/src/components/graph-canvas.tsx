@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GraphNode, GraphResult } from "@mcp-graph-explorer/normalizer";
 import type { LayoutName } from "../layouts.ts";
+import type { Selection } from "../model.ts";
 import type { Theme } from "../palette.ts";
 import type { GraphRenderer } from "../renderer.ts";
 import { createSigmaRenderer } from "../sigma-renderer.ts";
@@ -9,8 +10,8 @@ import { cellText } from "./data-table.tsx";
 interface Props {
   result: GraphResult;
   theme: Theme;
-  selected: string | null;
-  onSelect(id: string | null): void;
+  selected: Selection | null;
+  onSelect(selected: Selection | null): void;
   highlight: Set<string> | null;
   hidden: Set<string>;
   layout: LayoutName;
@@ -29,7 +30,8 @@ export function GraphCanvas({ result, theme, selected, onSelect, highlight, hidd
 
   useEffect(() => {
     renderer.current = createSigmaRenderer(element.current!, {
-      onNodeClick: (id) => select.current(id),
+      onNodeClick: (id) => select.current({ kind: "node", id }),
+      onEdgeClick: (id) => select.current({ kind: "edge", id }),
       onBackgroundClick: () => select.current(null),
       onNodeHover: (id) => setHovered(id ? { id, at: pointer.current } : undefined),
     });

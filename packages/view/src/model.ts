@@ -77,3 +77,21 @@ export function searchNodes(nodes: GraphResult["nodes"], query: string): Set<str
   const matches = (value: unknown) => String(typeof value === "object" ? JSON.stringify(value) : value).toLowerCase().includes(needle);
   return new Set(nodes.filter((n) => [...n.labels, ...Object.values(n.props)].some(matches)).map((n) => n.id));
 }
+
+/** What is clicked in the graph. A node and a relationship can have the same id. */
+export type Selection = { kind: "node" | "edge"; id: string };
+
+/** What stays bright around the selection; null when there is nothing to focus on. */
+export function selectionFocus(selected: Selection | null, edges: GraphResult["edges"]) {
+  if (!selected) return null;
+  if (selected.kind === "edge") {
+    const edge = edges.find((e) => e.id === selected.id);
+    return edge ? { nodes: new Set([edge.source, edge.target]), edges: new Set([edge.id]) } : null;
+  }
+  const nodes = new Set([selected.id]);
+  for (const { source, target } of edges) {
+    if (source === selected.id) nodes.add(target);
+    if (target === selected.id) nodes.add(source);
+  }
+  return { nodes, edges: new Set(edges.filter((e) => nodes.has(e.source) && nodes.has(e.target)).map((e) => e.id)) };
+}

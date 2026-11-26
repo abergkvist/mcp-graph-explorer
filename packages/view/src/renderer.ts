@@ -1,12 +1,13 @@
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import type { LayoutName } from "./layouts.ts";
+import type { Selection } from "./model.ts";
 
 export interface GraphRenderer {
   /** Replaces the drawn graph; nodes with a known id keep their position. */
   setGraph(graph: Pick<GraphResult, "nodes" | "edges">): void;
   /** Rearranges all nodes, discarding positions the user has dragged them to. */
   setLayout(layout: LayoutName): void;
-  setSelected(id: string | null): void;
+  setSelected(selected: Selection | null): void;
   setHighlight(ids: Set<string> | null): void;
   setHiddenLabels(labels: Set<string>): void;
   setTheme(theme: "light" | "dark"): void;
@@ -14,6 +15,7 @@ export interface GraphRenderer {
 }
 export interface RendererEvents {
   onNodeClick(id: string): void;
+  onEdgeClick(id: string): void;
   onBackgroundClick(): void;
   onNodeHover(id: string | null): void;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GraphNode, GraphResult } from "@mcp-graph-explorer/normalizer";
+import type { LayoutName } from "../layouts.ts";
 import type { Theme } from "../palette.ts";
 import type { GraphRenderer } from "../renderer.ts";
 import { createSigmaRenderer } from "../sigma-renderer.ts";
@@ -12,11 +13,12 @@ interface Props {
   onSelect(id: string | null): void;
   highlight: Set<string> | null;
   hidden: Set<string>;
+  layout: LayoutName;
 }
 
 interface Pointer { x: number; y: number; width: number; height: number }
 
-export function GraphCanvas({ result, theme, selected, onSelect, highlight, hidden }: Props) {
+export function GraphCanvas({ result, theme, selected, onSelect, highlight, hidden, layout }: Props) {
   const pointer = useRef<Pointer>({ x: 0, y: 0, width: 0, height: 0 });
   const [hovered, setHovered] = useState<{ id: string; at: Pointer }>();
   const element = useRef<HTMLDivElement>(null);
@@ -35,6 +37,7 @@ export function GraphCanvas({ result, theme, selected, onSelect, highlight, hidd
   }, []);
   useEffect(() => renderer.current?.setTheme(theme), [theme]);
   useEffect(() => renderer.current?.setGraph(result), [result]);
+  useEffect(() => renderer.current?.setLayout(layout), [layout]);
   useEffect(() => renderer.current?.setSelected(selected), [selected]);
   useEffect(() => renderer.current?.setHighlight(highlight), [highlight]);
   useEffect(() => renderer.current?.setHiddenLabels(hidden), [hidden]);

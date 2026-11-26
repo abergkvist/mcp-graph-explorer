@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { hasCoordinates, LAYOUTS, type LayoutName } from "../layouts.ts";
 import { labelStyles } from "../model.ts";
 import { PALETTE, type Theme } from "../palette.ts";
 import { LabelMark } from "./label-mark.tsx";
@@ -15,10 +17,14 @@ interface Props {
   matches?: number;
   hidden: Set<string>;
   onToggle(label: string): void;
+  layout: LayoutName;
+  onLayout(layout: LayoutName): void;
 }
 
-/** Search, plus the legend, which doubles as the label filter. */
-export function Toolbar({ result, theme, query, onQuery, matches, hidden, onToggle }: Props) {
+/** Search, the legend (which doubles as the label filter) and the layout. */
+export function Toolbar({ result, theme, query, onQuery, matches, hidden, onToggle, layout, onLayout }: Props) {
+  // Geographic needs coordinates in the data.
+  const layouts = (Object.keys(LAYOUTS) as LayoutName[]).filter((name) => name !== "geographic" || hasCoordinates(result.nodes));
   const legend = useMemo(() => [...labelStyles(result.nodes.flatMap((n) => n.labels.slice(0, 1)))], [result]);
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
@@ -41,6 +47,16 @@ export function Toolbar({ result, theme, query, onQuery, matches, hidden, onTogg
           </button>
         </Badge>
       ))}
+      <Select value={layout} onValueChange={(value) => onLayout(value as LayoutName)}>
+        <SelectTrigger size="sm" className="ml-auto" aria-label="Layout">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper" align="end">
+          {layouts.map((name) => (
+            <SelectItem key={name} value={name}>{LAYOUTS[name]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

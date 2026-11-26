@@ -26,7 +26,7 @@ scrollar bort.
 - Egen historik eller bakåt/framåt-knappar. Historiken är de tidigare vyerna i chatten.
 - `sendMessage` och `updateModelContext` från vyn.
 - Streamable HTTP, andra databaser (ArcadeDB, Apache AGE), publicering på npm **[val]**.
-- Markering av flera noder; kartlayout efter koordinater **[val]**.
+- Markering av flera noder; bakgrundskarta. (Kartlayout utan bakgrund lades till efter v1.)
 
 ## Andra hosts
 
@@ -197,7 +197,8 @@ Klick på bakgrunden rensar. Finns noden inte längre säger verktyget det.
 
 - Färg och form per label (stödet för former i Sigma 4 kontrolleras; annars bara färg),
   tooltip med properties, sökning och filter på label.
-- Layout: ForceAtlas2 från graphology **[val]**.
+- Layout: ForceAtlas2 (förval), geografisk (när noderna har koordinater) eller cirkulär.
+  Noder kan dras. (Tillagt 2026-11-26 efter v1.)
 - Expanderade noder finns bara i den öppna vyn och försvinner om den laddas om.
 - Deklarerar `inline` och `fullscreen`; resursen sätter `preferredDisplayMode: "fullscreen"`.
   "Öppna i panel" anropar `requestDisplayMode` i klickhanteraren.

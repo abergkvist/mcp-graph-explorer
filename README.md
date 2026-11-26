@@ -67,6 +67,10 @@ Desktop, then ask for example "Show the whole railway network".
 - **Click a node** to see its properties, and **Expand** to add its neighbors.
 - **Refer to the selection in the chat** ("what connects to this one?"). Claude looks it up with
   `get_selection`.
+- **Drag** nodes to rearrange them.
+- **Choose a layout:** force-directed (default), circular, or geographic when nodes have `lat`/`lon`,
+  `latitude`/`longitude` or a WGS 84 point property. Geographic draws no background map, and places
+  nodes without coordinates between their neighbors.
 - **Search** nodes and **filter** by label.
 - Earlier results stay in the chat and can be opened in the panel again.
 
@@ -124,7 +128,7 @@ size limit on what the view receives. Cuts are reported to Claude and shown in t
 - Built and tested for Claude Desktop with a local (stdio) server. Other MCP Apps hosts are untested.
 - The side panel is not available to every organization; the view also works inside the chat.
 - The selected node is shared between chats: the last click wins.
-- Expanded nodes are gone if the view is reloaded.
+- Expanded nodes, dragged positions and the chosen layout are gone if the view is reloaded.
 
 ## Development
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Component, useMemo, useState, type ReactNode } from "react";
 import { mergeGraphs } from "@mcp-graph-explorer/normalizer/graph";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { GraphCanvas } from "./components/graph-canvas.tsx";
 import { NodeDetails } from "./components/node-details.tsx";
 import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
-import { pickView, searchNodes } from "./model.ts";
+import { pickView, searchNodes, writeNote } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -87,7 +87,8 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
       {result.meta.truncated.length > 0 && (
         <p className="border-b bg-muted px-3 py-1.5 text-xs">Result truncated: {result.meta.truncated.join(", ")}</p>
       )}
-      {view === "empty" && <Message text="No results" />}
+      {writeNote(result.meta) && view !== "empty" && <p className="border-b bg-muted px-3 py-1.5 text-xs">{writeNote(result.meta)}</p>}
+      {view === "empty" && <Message text={writeNote(result.meta) ?? "No results"} />}
       {view === "value" && (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6">
           <p className="max-w-full text-5xl font-semibold tracking-tight break-words tabular-nums">{cellText(result.table.rows[0]![0]!)}</p>
@@ -125,6 +126,17 @@ function Result({ result: initial, theme, expand, host }: ResultProps) {
   );
 }
 
+/** React removes the whole tree on an uncaught error; show a message instead of an empty panel. */
+class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? <Message text="This result can't be displayed" error /> : this.props.children;
+  }
+}
+
 export function App() {
   const { state, frame, openInPanel, selectNode, expandNode } = useHost();
   return (
@@ -133,12 +145,14 @@ export function App() {
         {state.kind === "loading" && <Message text="Running query…" />}
         {state.kind === "message" && <Message text={state.text} error={state.error} />}
         {state.kind === "result" && (
-          <Result
-            result={state.result}
-            theme={frame.theme}
-            expand={frame.canExpand ? openInPanel : undefined}
-            host={{ selectNode, expandNode }}
-          />
+          <Fallback>
+            <Result
+              result={state.result}
+              theme={frame.theme}
+              expand={frame.canExpand ? openInPanel : undefined}
+              host={{ selectNode, expandNode }}
+            />
+          </Fallback>
         )}
       </main>
     </div>

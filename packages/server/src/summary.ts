@@ -43,6 +43,6 @@ export function summarize(result: GraphResult): string {
     if (hidden > 0) lines.push(`(${hidden} more rows not shown)`);
   }
   if (meta.truncated.length) lines.push(`Truncated: ${meta.truncated.join(", ")}`);
-  if (!nodes.length && !table.rows.length) lines.push("No results.");
+  if (!nodes.length && !table.rows.length && !meta.changes) lines.push("No results.");
   return lines.join("\n");
 }

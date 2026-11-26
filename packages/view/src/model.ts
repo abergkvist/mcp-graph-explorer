@@ -1,12 +1,28 @@
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
 
-/** Accepts only payloads that look like a result; old or foreign ones become undefined. */
+/**
+ * Accepts only payloads that can be drawn; old or foreign ones become undefined.
+ * Old chats hand their stored result to the newest view, so the shape cannot be taken for granted.
+ */
 export function parseResult(structured: unknown): GraphResult | undefined {
   const r = structured as Partial<GraphResult> | null | undefined;
-  const ok =
-    r && Array.isArray(r.nodes) && Array.isArray(r.edges) && Array.isArray(r.table?.columns) &&
-    Array.isArray(r.table?.rows) && Array.isArray(r.meta?.truncated);
-  return ok ? (r as GraphResult) : undefined;
+  if (!r || !Array.isArray(r.nodes) || !Array.isArray(r.edges)) return undefined;
+  if (!Array.isArray(r.table?.columns) || !Array.isArray(r.table.rows) || !Array.isArray(r.meta?.truncated)) return undefined;
+  if (!r.table.rows.every(Array.isArray)) return undefined;
+  const ids = new Set<string>();
+  for (const node of r.nodes) {
+    if (typeof node?.id !== "string" || !Array.isArray(node.labels) || typeof node.props !== "object" || !node.props) return undefined;
+    ids.add(node.id);
+  }
+  const connected = r.edges.every((e) => typeof e?.id === "string" && ids.has(e.source) && ids.has(e.target));
+  return connected ? (r as GraphResult) : undefined;
+}
+
+/** What to tell the user after a committed write; undefined for reads. */
+export function writeNote({ changes }: GraphResult["meta"]): string | undefined {
+  if (!changes) return undefined;
+  const list = Object.entries(changes).map(([name, count]) => `${name} ${count}`).join(", ");
+  return list ? `Write committed: ${list}` : "Write committed";
 }
 
 export function pickView({ nodes, edges, table }: GraphResult): "graph" | "table" | "value" | "empty" {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { labelStyles, parseResult, pickView, searchNodes } from "../src/model.ts";
+import { labelStyles, parseResult, pickView, searchNodes, writeNote } from "../src/model.ts";
 
 const result = (partial: Partial<GraphResult>): GraphResult => ({
   nodes: [],
@@ -24,6 +24,17 @@ describe("view model", () => {
       expect(new Set(styles.map((s) => s.color)).size).toBe(labels.length);
       expect(new Set(styles.map((s) => s.shape)).size).toBe(labels.length);
     }
+  });
+  it("rejects payloads that would crash the rendering", () => {
+    const ok = { id: "1", labels: [], props: {} };
+    expect(parseResult(result({ nodes: [{ id: "1" } as never] }))).toBeUndefined();
+    expect(parseResult(result({ nodes: [ok], edges: [{ id: "e", type: "T", source: "1", target: "2", props: {} }] }))).toBeUndefined();
+    expect(parseResult(result({ nodes: [ok], edges: [{ id: "e", type: "T", source: "1", target: "1", props: {} }] }))).toBeDefined();
+  });
+  it("says what a committed write changed", () => {
+    expect(writeNote(result({}).meta)).toBeUndefined();
+    expect(writeNote({ ...result({}).meta, changes: {} })).toBe("Write committed");
+    expect(writeNote({ ...result({}).meta, changes: { nodesCreated: 3 } })).toBe("Write committed: nodesCreated 3");
   });
   it("searches labels and property values", () => {
     const nodes = [

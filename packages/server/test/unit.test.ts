@@ -63,6 +63,11 @@ describe("limits and summary", () => {
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(140_000);
     expect(r.meta.truncated).toEqual(expect.arrayContaining(["properties"]));
   });
+  it("does not call a committed write without rows 'No results'", () => {
+    const written = graph(0);
+    written.meta.changes = { nodesCreated: 3 };
+    expect(summarize(written)).toBe("Write mode: transaction committed. nodesCreated: 3");
+  });
   it("summarizes without sending the whole graph", () => {
     const text = summarize(graph(400, [], Array.from({ length: 80 }, (_, i) => [i])));
     expect(text).toContain("400 nodes");

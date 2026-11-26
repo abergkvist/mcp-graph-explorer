@@ -45,6 +45,15 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     },
   });
 
+  // Sigma only listens to window resizes. The container also changes size when it is hidden
+  // behind the table tab or when the panel is resized, so follow the element itself.
+  const observer = new ResizeObserver(() => {
+    if (!el.offsetWidth || !el.offsetHeight) return;
+    sigma.resize();
+    sigma.refresh();
+  });
+  observer.observe(el);
+
   sigma.on("clickNode", ({ node }) => events.onNodeClick(node));
   sigma.on("clickStage", () => events.onBackgroundClick());
   sigma.on("enterNode", ({ node }) => events.onNodeHover(node));
@@ -118,6 +127,9 @@ export const createSigmaRenderer: CreateRenderer = (el, events) => {
     setHighlight(ids) { highlight = ids; paint(); },
     setHiddenLabels(labels) { hidden = labels; paint(); },
     setTheme(next) { theme = next; paint(); },
-    destroy: () => sigma.kill(),
+    destroy: () => {
+      observer.disconnect();
+      sigma.kill();
+    },
   };
 };

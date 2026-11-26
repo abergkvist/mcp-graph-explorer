@@ -100,6 +100,9 @@ Setting `GRAPH_ACCESS_MODE=write` is your decision. Know what it means:
 - `LOAD CSV` only reads, but it reads from the **database server**: files in Memgraph, network
   addresses in Neo4j.
 - Procedures installed in your database may have side effects outside the transaction.
+- Neo4j administration commands that are not writes: with an administrator login, `SHOW TRANSACTIONS`
+  shows other users' query text and parameters, and `TERMINATE TRANSACTIONS` stops their queries.
+  Neo4j Community Edition has no restricted users, so do not point the server at a shared instance there.
 
 If your database edition supports users with limited rights, connect with one that can only read.
 

@@ -63,11 +63,6 @@ describe("limits and summary", () => {
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(140_000);
     expect(r.meta.truncated).toEqual(expect.arrayContaining(["properties"]));
   });
-  it("does not call a committed write without rows 'No results'", () => {
-    const written = graph(0);
-    written.meta.changes = { nodesCreated: 3 };
-    expect(summarize(written)).toBe("Write mode: transaction committed. nodesCreated: 3");
-  });
   it("summarizes without sending the whole graph", () => {
     const text = summarize(graph(400, [], Array.from({ length: 80 }, (_, i) => [i])));
     expect(text).toContain("400 nodes");
@@ -110,23 +105,10 @@ describe("runCypher", () => {
     expect((await run([[node(1), rel]], true)).calls).toBe(2);
     expect((await run([[node(1), node(2)]], false)).calls).toBe(1);
   });
-  it("says that a write was committed even if the follow-up query fails", async () => {
+  it("never writes, also when the server is in write mode", async () => {
     const fake = fakeRunner([[1, 2]], "write");
-    const failing: QueryRunner = {
-      ...fake.runner,
-      run: (cypher, params, maxRows, write) =>
-        cypher === "C" ? Promise.reject(new Error("boom")) : fake.runner.run(cypher, params, maxRows, write),
-    };
-    await expect(runCypher(failing, adapter, { answer_query: "A", context_query: "C" }))
-      .rejects.toThrow(/committed.*Do not run answer_query again.*boom/);
-  });
-  it("lets only the answer query write, and says so", async () => {
-    const fake = fakeRunner([[1, 2]], "write");
-    const result = await runCypher(fake.runner, adapter, { answer_query: "A", context_query: "C" });
-    expect(fake.calls.map((c) => c.write)).toEqual([true, false]);
-    expect(summarize(result)).toMatch(/^Write mode: transaction committed\. nodesCreated: 1/);
-    const read = await runCypher(fakeRunner([[1, 2]]).runner, adapter, { answer_query: "A" });
-    expect(summarize(read)).not.toContain("committed");
+    await runCypher(fake.runner, adapter, { answer_query: "A", context_query: "C" });
+    expect(fake.calls.map((c) => c.write)).toEqual([false, false]);
   });
 });
 

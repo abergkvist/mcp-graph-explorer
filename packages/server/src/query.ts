@@ -48,27 +48,11 @@ async function autoConnect(runner: QueryRunner, adapter: DialectAdapter, result:
   return merged;
 }
 
+/** The final answer for the view. Only reads, also when the server is in write mode. */
 export async function runCypher(runner: QueryRunner, adapter: DialectAdapter, input: CypherInput): Promise<GraphResult> {
-  const { answer_query, params = {} } = input;
-  const answer = await runner.run(answer_query, params, LIMITS.maxRows, runner.accessMode === "write");
-  if (!answer.changes) return complete(runner, adapter, answer, input);
-  try {
-    return await complete(runner, adapter, answer, input);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`The write was committed. Do not run answer_query again. A follow-up step failed: ${reason}`);
-  }
-}
-
-/** Everything after the answer query: context, auto-connect and limits. All of it only reads. */
-async function complete(
-  runner: QueryRunner,
-  adapter: DialectAdapter,
-  answer: RunResult,
-  { context_query, params = {}, connect = "auto" }: CypherInput,
-): Promise<GraphResult> {
+  const { answer_query, context_query, params = {}, connect = "auto" } = input;
+  const answer = await runner.run(answer_query, params, LIMITS.maxRows);
   let result = toGraph(answer, adapter);
-  if (answer.changes) result.meta.changes = answer.changes;
   if (context_query) result = mergeGraphs(result, toGraph(await runner.run(context_query, params, LIMITS.maxRows), adapter));
 
   const real = result.nodes.filter((n) => !n.placeholder).length;

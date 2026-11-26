@@ -14,10 +14,6 @@ export function summarize(result: GraphResult): string {
   const { nodes, edges, table, meta } = result;
   const lines: string[] = [];
 
-  if (meta.changes) {
-    const changes = Object.entries(meta.changes).map(([k, v]) => `${k}: ${v}`).join(", ");
-    lines.push(`Write mode: transaction committed.${changes ? ` ${changes}` : ""}`);
-  }
   if (nodes.length) {
     lines.push(`Graph: ${nodes.length} nodes, ${edges.length} relationships`);
     const labels = counts(nodes.flatMap((n) => n.labels));
@@ -43,6 +39,6 @@ export function summarize(result: GraphResult): string {
     if (hidden > 0) lines.push(`(${hidden} more rows not shown)`);
   }
   if (meta.truncated.length) lines.push(`Truncated: ${meta.truncated.join(", ")}`);
-  if (!nodes.length && !table.rows.length && !meta.changes) lines.push("No results.");
+  if (!nodes.length && !table.rows.length) lines.push("No results.");
   return lines.join("\n");
 }

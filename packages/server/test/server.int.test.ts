@@ -43,7 +43,7 @@ describe.each(targets)("$dialect", (config) => {
     read = await connect(config);
     write = await connect({ ...config, accessMode: "write" });
   });
-  afterAll(() => write.call("run_cypher", { answer_query: "MATCH (n:ReadModeProbe) DELETE n" }));
+  afterAll(() => write.call("query_cypher", { query: "MATCH (n:ReadModeProbe) DELETE n" }));
 
   it("describes the schema", async () => {
     const { text } = await read.call("get_schema");
@@ -52,10 +52,10 @@ describe.each(targets)("$dialect", (config) => {
   });
 
   it("returns a graph for nodes and a table for values", async () => {
-    const nodes = await read.call("run_cypher", { answer_query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun central" } });
+    const nodes = await read.call("show_result", { answer_query: "MATCH (s:Station {name: $name}) RETURN s", params: { name: "Falun central" } });
     expect(nodes.data.nodes).toHaveLength(1);
     expect(nodes.text).toContain("Falun central");
-    const rows = await read.call("run_cypher", { answer_query: "MATCH (s:Station) RETURN s.name LIMIT $n", params: { n: 3 } });
+    const rows = await read.call("show_result", { answer_query: "MATCH (s:Station) RETURN s.name LIMIT $n", params: { n: 3 } });
     expect(rows.data.table.rows).toHaveLength(3);
     expect(rows.data.nodes).toHaveLength(0);
   });
@@ -71,7 +71,7 @@ describe.each(targets)("$dialect", (config) => {
   });
 
   it("auto-connects result nodes", async () => {
-    const { data } = await read.call("run_cypher", {
+    const { data } = await read.call("show_result", {
       answer_query: "MATCH (s:Station {name: 'Falun central'})-[:CONNECTS]-(t:TrackSection) RETURN s, t",
     });
     expect(data.meta.autoConnectedEdges).toBeGreaterThan(0);
@@ -79,27 +79,32 @@ describe.each(targets)("$dialect", (config) => {
   });
 
   it("refuses writes by default", async () => {
-    const res = await read.call("run_cypher", { answer_query: CREATE });
+    const res = await read.call("show_result", { answer_query: CREATE });
     expect(res.isError).toBe(true);
-    expect((await read.call("run_cypher", { answer_query: COUNT })).data.table.rows).toEqual([[0]]);
-    const tool = (await read.client.listTools()).tools.find((t) => t.name === "run_cypher")!;
+    expect((await read.call("show_result", { answer_query: COUNT })).data.table.rows).toEqual([[0]]);
+    const tool = (await read.client.listTools()).tools.find((t) => t.name === "show_result")!;
     expect(tool.annotations?.readOnlyHint).toBe(true);
+    expect((tool._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri).toMatch(/^ui:/);
+    expect((await read.call("query_cypher", { query: CREATE })).isError).toBe(true);
   });
 
-  it("writes only through answer_query in write mode", async () => {
-    const res = await write.call("run_cypher", { answer_query: CREATE });
-    expect(res.text).toContain("committed");
-    expect((await read.call("run_cypher", { answer_query: COUNT })).data.table.rows).toEqual([[1]]);
-    expect((await write.call("run_cypher", { answer_query: "RETURN 1", context_query: CREATE })).isError).toBe(true);
-    const tool = (await write.client.listTools()).tools.find((t) => t.name === "run_cypher")!;
-    expect(tool.annotations?.destructiveHint).toBe(true);
-    expect(tool.description).toContain("WRITE MODE");
+  it("writes only through query_cypher in write mode", async () => {
+    const res = await write.call("query_cypher", { query: CREATE });
+    expect(JSON.parse(res.text).changes).toEqual(expect.objectContaining({ nodesCreated: 1 }));
+    expect((await write.call("show_result", { answer_query: CREATE })).isError).toBe(true);
+    expect((await read.call("query_cypher", { query: COUNT })).text).toContain('"rows":[[1]]');
+    const { tools } = await write.client.listTools();
+    const query = tools.find((t) => t.name === "query_cypher")!;
+    expect(query.annotations?.destructiveHint).toBe(true);
+    expect(query.description).toContain("WRITE MODE");
+    expect(tools.find((t) => t.name === "show_result")!.annotations?.readOnlyHint).toBe(true);
+    expect(tools.map((t) => t.name)).not.toContain("run_cypher");
   });
 
   it("reports an unreachable database and keeps serving", async () => {
     const down = await connect({ ...config, uri: "bolt://localhost:1" });
     for (let i = 0; i < 2; i++) {
-      const res = await down.call("run_cypher", { answer_query: "RETURN 1" });
+      const res = await down.call("show_result", { answer_query: "RETURN 1" });
       expect(res.isError).toBe(true);
       expect(res.text.length).toBeGreaterThan(10);
     }
@@ -107,7 +112,7 @@ describe.each(targets)("$dialect", (config) => {
 
   it("shares the selection between two server instances and expands nodes", async () => {
     const view = await connect(config);
-    const falun = await view.call("run_cypher", { answer_query: "MATCH (s:Station {name: 'Falun central'}) RETURN s", connect: false });
+    const falun = await view.call("show_result", { answer_query: "MATCH (s:Station {name: 'Falun central'}) RETURN s", connect: false });
     const nodeId = falun.data.nodes[0].id;
 
     expect((await read.call("get_selection")).text).toBe("No node has been selected in the graph view.");

@@ -3,7 +3,7 @@
 Ask questions about a graph database in Claude Desktop and see the answer as an interactive graph
 in the side panel, where it does not scroll away.
 
-Claude writes Cypher and this MCP server runs it against [Memgraph](https://memgraph.com/), [ArcadeDB](https://arcadedb.com/), [Neo4j](https://neo4j.com/) or othter [BOLT](https://neo4j.com/docs/bolt/current/bolt/) compatible graph. Claude can
+Claude writes Cypher and this MCP server runs it against [Memgraph](https://memgraph.com/), [ArcadeDB](https://arcadedb.com/), [Neo4j](https://neo4j.com/) or another [BOLT](https://neo4j.com/docs/bolt/current/bolt/) compatible graph database. Claude can
 explore and check without showing anything, and then shows the final answer in an
 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view as a graph, a table or a single
 value.
@@ -22,7 +22,9 @@ pnpm build
 
 This starts Neo4j on `bolt://localhost:7687` (user `neo4j`, password `graphexplorer`) and Memgraph
 on `bolt://localhost:7688` (no login), both loaded with the same railway network: 82 operational
-points and 84 sections of line in Dalarna and Gävle, Sweden ([data source](#data)).
+points and 84 sections of line in Dalarna and Gävle, Sweden ([data source](#data)). It also starts ArcadeDB on
+`bolt://localhost:7692` (user `root`, password `graphexplorer`, database `graph`) with the same data.
+**Read mode does not protect ArcadeDB's schema**, see [Security](#security).
 
 ```
 (:Station | :Junction)-[:CONNECTS]->(:TrackSection)-[:CONNECTS]->(:Station | :Junction)
@@ -50,7 +52,8 @@ Add the server to `claude_desktop_config.json` (on macOS in
 ```
 
 For Memgraph use `"GRAPH_URI": "bolt://localhost:7688"` and `"GRAPH_DIALECT": "memgraph"`, and
-leave out user and password. Reload the MCP configuration (Developer menu) or restart Claude
+leave out user and password. For ArcadeDB use `"GRAPH_URI": "bolt://localhost:7692"`,
+`"GRAPH_USER": "root"`, `"GRAPH_DATABASE": "graph"` and keep `"GRAPH_DIALECT": "neo4j"`. Reload the MCP configuration (Developer menu) or restart Claude
 Desktop, then ask for example "Show the whole railway network".
 
 | Variable | Default | Meaning |
@@ -96,9 +99,20 @@ Desktop, then ask for example "Show the whole railway network".
 The queries are written by a language model. It can misunderstand you, and text stored in your
 data can influence what it does. Therefore the server is read-only unless you say otherwise: it
 runs every query in a read-mode transaction that is always rolled back, so the database itself
-rejects writes.
+rejects writes. ArcadeDB is an exception, see below.
 
 Memgraph ignores read mode for auto-commit queries. The server never uses them.
+
+### ArcadeDB
+
+Tested with 26.10.2: ArcadeDB does not reject writes in read mode.
+
+- Changes to data are undone by the rollback, but the query reports no error and returns what it
+  would have written.
+- **Schema changes are kept.** Creating and dropping indexes and constraints takes effect even in
+  read mode, and new empty types remain.
+
+Use ArcadeDB only with data you can restore.
 
 ### Write mode
 

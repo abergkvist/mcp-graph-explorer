@@ -2,23 +2,24 @@ import neo4j from "neo4j-driver";
 import { afterAll, describe, expect, it } from "vitest";
 
 const targets = [
-  { name: "neo4j", uri: "bolt://localhost:7687", auth: neo4j.auth.basic("neo4j", "graphexplorer") },
-  { name: "memgraph", uri: "bolt://localhost:7688", auth: neo4j.auth.basic("", "") },
+  { name: "neo4j", uri: "bolt://localhost:7687", auth: neo4j.auth.basic("neo4j", "graphexplorer"), database: undefined, rejectsWrites: true },
+  { name: "memgraph", uri: "bolt://localhost:7688", auth: neo4j.auth.basic("", ""), database: undefined, rejectsWrites: true },
+  { name: "arcadedb", uri: "bolt://localhost:7692", auth: neo4j.auth.basic("root", "graphexplorer"), database: "graph", rejectsWrites: false },
 ];
 const COUNT = "MATCH (n:ReadModeProbe) RETURN count(n) AS c";
 
-describe.each(targets)("$name", ({ uri, auth }) => {
+describe.each(targets)("$name", ({ uri, auth, database, rejectsWrites }) => {
   const driver = neo4j.driver(uri, auth);
 
   afterAll(async () => {
-    const s = driver.session({ defaultAccessMode: neo4j.session.WRITE });
+    const s = driver.session({ database, defaultAccessMode: neo4j.session.WRITE });
     await s.run("MATCH (n:ReadModeProbe) DELETE n");
     await s.close();
     await driver.close();
   });
 
   const count = async () => {
-    const s = driver.session({ defaultAccessMode: neo4j.session.READ });
+    const s = driver.session({ database, defaultAccessMode: neo4j.session.READ });
     try {
       return (await s.run(COUNT)).records[0]!.get("c").toNumber();
     } finally {
@@ -28,10 +29,12 @@ describe.each(targets)("$name", ({ uri, auth }) => {
 
   // The server only ever sends queries in explicit transactions. This matters: Memgraph ignores
   // READ mode for auto-commit queries (session.run), so those must never be used.
-  it("rejects a write in a READ transaction", async () => {
-    const s = driver.session({ defaultAccessMode: neo4j.session.READ });
+  it("does not keep a write made in a READ transaction", async () => {
+    const s = driver.session({ database, defaultAccessMode: neo4j.session.READ });
     const tx = s.beginTransaction();
-    await expect(tx.run("CREATE (:ReadModeProbe)").then((r) => r.records)).rejects.toThrow();
+    const write = tx.run("CREATE (:ReadModeProbe)").then((r) => r.records);
+    if (rejectsWrites) await expect(write).rejects.toThrow();
+    else await write;
     await tx.rollback().catch(() => {});
     await s.close();
     expect(await count()).toBe(0);

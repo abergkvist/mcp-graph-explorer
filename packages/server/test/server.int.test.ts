@@ -10,9 +10,12 @@ import { createSelectionStore } from "../src/selection.ts";
 import { createServer } from "../src/server.ts";
 import { createViewQueryStore } from "../src/view-query.ts";
 
-const targets: Config[] = [
-  { dialect: "neo4j", uri: "bolt://localhost:7687", user: "neo4j", password: "graphexplorer", accessMode: "read" },
-  { dialect: "memgraph", uri: "bolt://localhost:7688", user: "", password: "", accessMode: "read" },
+/** rejectsWrites: false means that a write in a read is not an error; it is only rolled back. */
+const targets: (Config & { name: string; rejectsWrites: boolean })[] = [
+  { name: "neo4j", rejectsWrites: true, dialect: "neo4j", uri: "bolt://localhost:7687", user: "neo4j", password: "graphexplorer", accessMode: "read" },
+  { name: "memgraph", rejectsWrites: true, dialect: "memgraph", uri: "bolt://localhost:7688", user: "", password: "", accessMode: "read" },
+  // ArcadeDB speaks Neo4j's dialect over BOLT.
+  { name: "arcadedb", rejectsWrites: false, dialect: "neo4j", uri: "bolt://localhost:7692", user: "root", password: "graphexplorer", database: "graph", accessMode: "read" },
 ];
 
 const runners: QueryRunner[] = [];
@@ -37,7 +40,7 @@ afterAll(() => Promise.all(runners.map((r) => r.close())));
 const COUNT = "MATCH (n:ReadModeProbe) RETURN count(n) AS c";
 const CREATE = "CREATE (:ReadModeProbe)";
 
-describe.each(targets)("$dialect", (config) => {
+describe.each(targets)("$name", (config) => {
   let read: Awaited<ReturnType<typeof connect>>;
   let write: Awaited<ReturnType<typeof connect>>;
   beforeAll(async () => {
@@ -81,18 +84,19 @@ describe.each(targets)("$dialect", (config) => {
 
   it("refuses writes by default", async () => {
     const res = await read.call("show_result", { answer_query: CREATE });
-    expect(res.isError).toBe(true);
+    expect(res.isError).toBe(config.rejectsWrites);
     expect((await read.call("show_result", { answer_query: COUNT })).data.table.rows).toEqual([[0]]);
     const tool = (await read.client.listTools()).tools.find((t) => t.name === "show_result")!;
     expect(tool.annotations?.readOnlyHint).toBe(true);
     expect((tool._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri).toMatch(/^ui:/);
-    expect((await read.call("query_cypher", { query: CREATE })).isError).toBe(true);
+    expect((await read.call("query_cypher", { query: CREATE })).isError).toBe(config.rejectsWrites);
+    expect((await read.call("show_result", { answer_query: COUNT })).data.table.rows).toEqual([[0]]);
   });
 
   it("writes only through query_cypher in write mode", async () => {
     const res = await write.call("query_cypher", { query: CREATE });
     expect(JSON.parse(res.text).changes).toEqual(expect.objectContaining({ nodesCreated: 1 }));
-    expect((await write.call("show_result", { answer_query: CREATE })).isError).toBe(true);
+    expect((await write.call("show_result", { answer_query: CREATE })).isError).toBe(config.rejectsWrites);
     expect((await read.call("query_cypher", { query: COUNT })).text).toContain('"rows":[[1]]');
     const { tools } = await write.client.listTools();
     const query = tools.find((t) => t.name === "query_cypher")!;
@@ -115,7 +119,7 @@ describe.each(targets)("$dialect", (config) => {
     expect(run.data.query).toEqual({ answer_query: "MATCH (s:Station) RETURN s LIMIT 2" });
     const count = async () => (await read.call("query_cypher", { query: COUNT })).text;
     const before = await count();
-    expect((await write.call("run_view_query", { answer_query: CREATE })).isError).toBe(true);
+    expect((await write.call("run_view_query", { answer_query: CREATE })).isError).toBe(config.rejectsWrites);
     expect(await count()).toBe(before);
     const tool = (await read.client.listTools()).tools.find((t) => t.name === "run_view_query")!;
     expect((tool._meta?.ui as { visibility?: string[] }).visibility).toEqual(["app"]);

@@ -56,6 +56,33 @@ leave out user and password. For ArcadeDB use `"GRAPH_URI": "bolt://localhost:76
 `"GRAPH_USER": "root"`, `"GRAPH_DATABASE": "graph"` and keep `"GRAPH_DIALECT": "neo4j"`. Reload the MCP configuration (Developer menu) or restart Claude
 Desktop, then ask for example "Show the whole railway network".
 
+### GitHub Copilot
+
+The server also works with GitHub Copilot in VS Code. Add it to `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "graph-explorer": {
+      "type": "local",
+      "command": "/absolute/path/to/node",
+      "args": ["/absolute/path/to/mcp-graph-explorer/packages/server/dist/index.js"],
+      "env": {
+        "GRAPH_URI": "bolt://localhost:7687",
+        "GRAPH_USER": "neo4j",
+        "GRAPH_PASSWORD": "graphexplorer",
+        "GRAPH_DIALECT": "neo4j",
+        "GRAPH_ACCESS_MODE": "read"
+      },
+      "tools": ["get_schema", "query_cypher", "show_result"]
+    }
+  }
+}
+```
+
+The `tools` list leaves out the tools that belong to the graph view. What this README says about the
+view and the side panel applies to Claude Desktop.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `GRAPH_URI` | `bolt://localhost:7687` | Bolt address |
@@ -185,7 +212,8 @@ result, which Claude Desktop keeps with the conversation.
 At most 1,000 rows, 500 nodes and 2,000 relationships per result, a 30 second query timeout, and a
 size limit on what the view receives. Cuts are reported to Claude and shown in the view.
 
-- Built and tested for Claude Desktop with a local (stdio) server. Other MCP Apps hosts are untested.
+- Built for Claude Desktop with a local (stdio) server, and also used with GitHub Copilot in VS Code. The graph
+  view is untested in other MCP Apps hosts.
 - The side panel is not available to every organization; the view also works inside the chat.
 - The selected node and your last-run query are shared between chats: the last click or run wins.
 - Expanded nodes, dragged positions, the chosen layout and your edited query are gone if the view is

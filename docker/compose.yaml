@@ -21,6 +21,20 @@ services:
       timeout: 10s
       retries: 30
 
+  arcadedb:
+    image: arcadedata/arcadedb:26.10.2
+    ports: ["127.0.0.1:7692:7687", "127.0.0.1:2480:2480"]
+    environment:
+      JAVA_OPTS: >-
+        -Darcadedb.server.rootPassword=graphexplorer
+        -Darcadedb.server.defaultDatabases=graph[root]
+        -Darcadedb.server.plugins=Bolt:com.arcadedb.bolt.BoltProtocolPlugin
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2480/api/v1/ready"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
   neo4j-seed:
     image: neo4j:2026.10.2-community
     depends_on:
@@ -34,3 +48,11 @@ services:
       memgraph: { condition: service_healthy }
     volumes: ["./seed.cypher:/seed.cypher:ro"]
     entrypoint: ["/bin/sh", "-c", "mgconsole --host memgraph < /seed.cypher"]
+
+  # ArcadeDB has no cypher-shell; Neo4j's loads it over BOLT.
+  arcadedb-seed:
+    image: neo4j:2026.10.2-community
+    depends_on:
+      arcadedb: { condition: service_healthy }
+    volumes: ["./seed.cypher:/seed.cypher:ro"]
+    entrypoint: ["cypher-shell", "-a", "bolt://arcadedb:7687", "-u", "root", "-p", "graphexplorer", "-d", "graph", "-f", "/seed.cypher"]

@@ -23,6 +23,8 @@ export interface Host {
   openInPanel(): void;
   /** Tells the server which node is selected, so that the model can ask for it. */
   selectNode(id: string | null): void;
+  /** Puts the view's state in the model's context, replacing what was there; undefined clears it. */
+  shareContext(text: string | undefined): void;
   expandNode(id: string): Promise<GraphResult>;
   /** Runs a query the user edited; throws with the database's message. */
   runQuery(query: ViewQuery): Promise<GraphResult>;
@@ -97,6 +99,11 @@ export function useHost(): Host {
       openInPanel: () => void app?.requestDisplayMode({ mode: "fullscreen" }),
       selectNode: (id: string | null) =>
         void app?.callServerTool({ name: "select_node", arguments: { nodeId: id } }).catch(console.error),
+      shareContext: (text: string | undefined) => {
+        if (!app?.getHostCapabilities()?.updateModelContext) return;
+        // Success does not mean the model sees it (see README), so the server's tools remain.
+        void app.updateModelContext({ content: text ? [{ type: "text", text }] : [] }).catch(console.error);
+      },
       expandNode: (id: string) => fetchResult("expand_node", { nodeId: id }, "Could not expand the node"),
       runQuery: (query: ViewQuery) => fetchResult("run_view_query", { ...query }, "The query failed"),
       resetQuery: () => void app?.callServerTool({ name: "reset_view_query", arguments: {} }).catch(console.error),

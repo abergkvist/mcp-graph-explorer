@@ -95,3 +95,43 @@ export function selectionFocus(selected: Selection | null, edges: GraphResult["e
   }
   return { nodes, edges: new Set(edges.filter((e) => nodes.has(e.source) && nodes.has(e.target)).map((e) => e.id)) };
 }
+
+/** Cuts long values, so that one big property or query does not fill the model's context. */
+const clip = (value: unknown, max: number) => {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > max ? `${text.slice(0, max)}… (cut)` : text;
+};
+
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * What the model should know about the view; undefined when the user has not changed anything.
+ * The host keeps only the last update, so this is always the whole state.
+ */
+export function modelContext(result: GraphResult, selected: Selection | null, userRan: boolean): string | undefined {
+  const parts: string[] = [];
+  if (userRan && result.query) {
+    const { answer_query, context_query, params } = result.query;
+    parts.push(
+      `The user ran their own query in the view:\n${clip(answer_query, 4000)}`,
+      ...(context_query ? [`Context query:\n${clip(context_query, 4000)}`] : []),
+      ...(params ? [`Parameters: ${clip(params, 1000)}`] : []),
+      `It returned ${count(result.nodes.length, "node")}, ${count(result.edges.length, "relationship")} ` +
+        `and ${count(result.table.rows.length, "row")}.`,
+    );
+  }
+  const byId = (id: string) => result.nodes.find((n) => n.id === id);
+  const describe = ({ id, labels, props }: GraphResult["nodes"][number]) =>
+    `${labels.join(":") || "node"} (id ${id}) ${clip(props, 1000)}`;
+  if (selected?.kind === "node") {
+    const node = byId(selected.id);
+    if (node) parts.push(`Selected node: ${describe(node)}`);
+  } else if (selected) {
+    const edge = result.edges.find((e) => e.id === selected.id);
+    if (edge) {
+      const end = (id: string) => `${nodeName(byId(id)!)} (id ${id})`;
+      parts.push(`Selected relationship: ${edge.type} from ${end(edge.source)} to ${end(edge.target)} ${clip(edge.props, 1000)}`);
+    }
+  }
+  return parts.length ? `State of the graph view:\n${parts.join("\n")}` : undefined;
+}

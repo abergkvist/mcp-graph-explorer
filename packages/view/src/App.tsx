@@ -11,7 +11,7 @@ import { QueryPanel } from "./components/query-panel.tsx";
 import { Toolbar } from "./components/toolbar.tsx";
 import { useHost, type Host } from "./host.ts";
 import { hasCoordinates, type LayoutName } from "./layouts.ts";
-import { pickView, searchNodes, writeNote, type Selection } from "./model.ts";
+import { modelContext, pickView, searchNodes, writeNote, type Selection } from "./model.ts";
 import type { Theme } from "./palette.ts";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -28,11 +28,13 @@ interface ResultProps {
   result: GraphResult;
   theme: Theme;
   expand?: () => void;
-  host: Pick<Host, "selectNode" | "expandNode">;
+  host: Pick<Host, "selectNode" | "shareContext" | "expandNode">;
+  /** The result shown is that of the user's own run. */
+  userRan?: boolean;
   editor?: { original: ViewQuery; run(query: ViewQuery): Promise<void>; reset(): void };
 }
 
-function Result({ result: given, theme, expand, host, editor }: ResultProps) {
+function Result({ result: given, theme, expand, host, userRan = false, editor }: ResultProps) {
   // Expanding adds to this copy; it is gone if the view is reloaded.
   const [result, setResult] = useState(given);
   // Dev only: ?select=<node id> starts with a node selected, for visual checks.
@@ -71,6 +73,14 @@ function Result({ result: given, theme, expand, host, editor }: ResultProps) {
     if (selectedBefore.current) host.selectNode(null);
   }, [given]);
   useEffect(() => void (selectedBefore.current = selected), [selected]);
+  // Nothing is sent until the user does something, so reopening an old view stays silent.
+  const context = modelContext(result, selected, userRan);
+  const sharedContext = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (context === sharedContext.current) return;
+    sharedContext.current = context;
+    host.shareContext(context);
+  }, [context]);
   const toggle = (label: string) =>
     setHidden((current) => {
       const next = new Set(current);
@@ -171,19 +181,19 @@ function Result({ result: given, theme, expand, host, editor }: ResultProps) {
 }
 
 /** Holds what is shown: Claude's result, or that of the user's latest run. */
-function QueryableResult({ result: initial, host, ...props }: Omit<ResultProps, "editor" | "host"> & {
-  host: Pick<Host, "selectNode" | "expandNode" | "runQuery" | "resetQuery">;
+function QueryableResult({ result: initial, host, ...props }: Omit<ResultProps, "editor" | "host" | "userRan"> & {
+  host: Pick<Host, "selectNode" | "shareContext" | "expandNode" | "runQuery" | "resetQuery">;
 }) {
-  const [shown, setShown] = useState(initial);
+  const [{ shown, userRan }, setShown] = useState({ shown: initial, userRan: false });
   const editor = initial.query && {
     original: initial.query,
-    run: async (query: ViewQuery) => setShown(await host.runQuery(query)),
+    run: async (query: ViewQuery) => setShown({ shown: await host.runQuery(query), userRan: true }),
     reset: () => {
-      setShown({ ...initial }); // a copy, so that expansions are dropped too
+      setShown({ shown: { ...initial }, userRan: false }); // a copy, so that expansions are dropped too
       host.resetQuery();
     },
   };
-  return <Result {...props} result={shown} host={host} editor={editor} />;
+  return <Result {...props} result={shown} userRan={userRan} host={host} editor={editor} />;
 }
 
 /** React removes the whole tree on an uncaught error; show a message instead of an empty panel. */
@@ -198,7 +208,7 @@ class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
 }
 
 export function App() {
-  const { state, frame, openInPanel, selectNode, expandNode, runQuery, resetQuery } = useHost();
+  const { state, frame, openInPanel, selectNode, shareContext, expandNode, runQuery, resetQuery } = useHost();
   // On the root element, so that the body, scrollbars and menus follow the theme too.
   useEffect(() => void document.documentElement.classList.toggle("dark", frame.theme === "dark"), [frame.theme]);
   return (
@@ -211,7 +221,7 @@ export function App() {
             result={state.result}
             theme={frame.theme}
             expand={frame.canExpand ? openInPanel : undefined}
-            host={{ selectNode, expandNode, runQuery, resetQuery }}
+            host={{ selectNode, shareContext, expandNode, runQuery, resetQuery }}
           />
         </Fallback>
       )}

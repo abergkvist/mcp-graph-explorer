@@ -72,8 +72,8 @@ Desktop, then ask for example "Show the whole railway network".
   view; Reset brings back Claude's query and result. The editor only reads, also in write mode.
   Ask Claude about your result and it looks the query up with `get_view_query`.
 - **Click a node** to see its properties, and **Expand** to add its neighbors.
-- **Click a relationship** to see its type, ends and properties. Claude cannot look up a selected
-  relationship, only a selected node.
+- **Click a relationship** to see its type, ends and properties. No tool looks up a selected
+  relationship; Claude learns of it only through the [model context](#what-claude-knows-about-the-view).
 - **Refer to the selection in the chat** ("what connects to this one?"). Claude looks it up with
   `get_selection`.
 - **Drag** nodes to rearrange them.
@@ -91,6 +91,38 @@ Desktop, then ask for example "Show the whole railway network".
 | `get_selection` | Claude | The node you last clicked, with its neighbors |
 | `get_view_query` | Claude | The query you last ran in the view, with a summary of its result |
 | `select_node`, `expand_node`, `run_view_query`, `reset_view_query` | the view | Not visible to Claude |
+
+## What Claude knows about the view
+
+The view tells Claude what you are looking at in two ways.
+
+1. **Model context.** When you select a node or relationship, or run your own query, the view calls
+   `updateModelContext` (MCP Apps) with the whole current state. Claude should then have it with your
+   next message, without calling a tool.
+2. **Tools.** `get_selection` and `get_view_query` let Claude ask. Claude has to think of calling
+   them, so say "the selected node" or "my query" if it does not.
+
+**The model context may never reach Claude, and the view cannot tell:** the host accepts the update
+either way. This looks like a bug in Claude Desktop, so the server keeps both ways.
+
+In our test on 27 November 2026 (Claude Desktop 6.28899.6, macOS, one run each, same test view):
+
+| MCP server connected as | Update accepted | Claude saw it |
+|---|---|---|
+| Local stdio server, which is how this project runs | yes | **no** |
+| Remote connector over Streamable HTTP | yes | yes |
+
+Others report the same symptom, also with remote servers, and that it comes and goes between
+versions and kinds of session:
+
+- [anthropics/claude-ai-mcp#826](https://github.com/anthropics/claude-ai-mcp/issues/826): update
+  accepted but never reaches the model
+- [anthropics/claude-ai-mcp#1217](https://github.com/anthropics/claude-ai-mcp/issues/1217): content
+  never reaches the model in Claude Desktop, while claude.ai in the browser works
+- [modelcontextprotocol/ext-apps#852](https://github.com/modelcontextprotocol/ext-apps/issues/852):
+  an app cannot tell whether its update reaches the model
+
+This server has no Streamable HTTP transport yet.
 
 ## Security
 
@@ -143,7 +175,9 @@ If your database edition supports users with limited rights, connect with one th
 Schema example values, the data returned by `query_cypher` (up to 100 nodes, 100 relationships and
 20,000 characters per call), `show_result` summaries (including up to 50 table rows), the selected
 node with its neighbors, and, when Claude calls `get_view_query`, the query you ran with its
-parameters and a summary of its result are sent to Claude. The complete graph of a shown result is part of the tool
+parameters and a summary of its result are sent to Claude. The view also puts the selected node or
+relationship with its properties, and your own query with its parameters, in the model context
+(long values are cut). The complete graph of a shown result is part of the tool
 result, which Claude Desktop keeps with the conversation.
 
 ## Limits

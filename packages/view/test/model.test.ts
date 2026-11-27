@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphResult } from "@mcp-graph-explorer/normalizer";
-import { editedQuery, labelStyles, parseResult, pickView, searchNodes, selectionFocus, writeNote } from "../src/model.ts";
+import { editedQuery, labelStyles, modelContext, parseResult, pickView, searchNodes, selectionFocus, writeNote } from "../src/model.ts";
 
 const result = (partial: Partial<GraphResult>): GraphResult => ({
   nodes: [],
@@ -11,6 +11,22 @@ const result = (partial: Partial<GraphResult>): GraphResult => ({
 });
 
 describe("view model", () => {
+  it("tells the model the whole state, as each update replaces the one before", () => {
+    const shown = result({
+      nodes: [{ id: "1", labels: ["Station"], props: { name: "Falun C" } }, { id: "2", labels: ["Junction"], props: {} }],
+      edges: [{ id: "e", type: "CONNECTS", source: "1", target: "2", props: { note: "x".repeat(5000) } }],
+      query: { answer_query: "MATCH (n) RETURN n" },
+    });
+    expect(modelContext(shown, null, false)).toBeUndefined();
+    const node = modelContext(shown, { kind: "node", id: "1" }, true)!;
+    expect(node).toContain("MATCH (n) RETURN n");
+    expect(node).toContain("2 nodes, 1 relationship");
+    expect(node).toContain("Falun C");
+    const edge = modelContext(shown, { kind: "edge", id: "e" }, false)!;
+    expect(edge).toContain("CONNECTS");
+    expect(edge).not.toContain("MATCH");
+    expect(edge.length).toBeLessThan(2000);
+  });
   it("picks the view from the content", () => {
     const n = { id: "1", labels: [], props: {} };
     expect(pickView(result({ nodes: [n] }))).toBe("graph");
